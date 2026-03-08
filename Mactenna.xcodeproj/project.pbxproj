@@ -8,6 +8,7 @@
 
 /* Begin PBXFileReference section */
 		55B600E12F4A381F008F5F7E /* Mactenna.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Mactenna.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		55B600FD2F4A468F008F5F7E /* OpenNEC.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = OpenNEC.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -45,6 +46,7 @@
 		55B600D82F4A381F008F5F7E = {
 			isa = PBXGroup;
 			children = (
+				55B600FD2F4A468F008F5F7E /* OpenNEC.xcconfig */,
 				55B600E32F4A381F008F5F7E /* Mactenna */,
 				55B600E22F4A381F008F5F7E /* Products */,
 			);
@@ -140,6 +142,7 @@
 /* Begin XCBuildConfiguration section */
 		55B600EF2F4A3821008F5F7E /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 55B600FD2F4A468F008F5F7E /* OpenNEC.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -187,6 +190,7 @@
 		};
 		55B600F02F4A3821008F5F7E /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 55B600FD2F4A468F008F5F7E /* OpenNEC.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -234,6 +238,7 @@
 		};
 		55B600F12F4A3821008F5F7E /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 55B600FD2F4A468F008F5F7E /* OpenNEC.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -296,6 +301,7 @@
 		};
 		55B600F22F4A3821008F5F7E /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 55B600FD2F4A468F008F5F7E /* OpenNEC.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;

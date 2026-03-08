@@ -1,0 +1,209 @@
+//
+//  ResultsView.swift
+//  Mactenna
+//
+//  Displays the output of an OpenNEC simulation run.
+//  Phase 3 shows the formatted NEC text report and captured log lines.
+//  Phase 4 will add a 3D radiation pattern tab.
+//
+
+import SwiftUI
+
+// MARK: – ResultsView
+
+struct ResultsView: View {
+
+    let result: SimulationResult?
+    let isRunning: Bool
+
+    @State private var selectedTab: ResultTab = .output
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if isRunning {
+                runningPlaceholder
+            } else if let result {
+                tabHeader
+                Divider()
+                tabContent(result)
+            } else {
+                idlePlaceholder
+            }
+        }
+        .onChange(of: result?.hasLog) { _, hasLog in
+            // Auto-switch to Log tab when diagnostics / log lines are present.
+            if hasLog == true { selectedTab = .log }
+        }
+    }
+
+    // MARK: – Idle / running placeholders
+
+    private var idlePlaceholder: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "waveform.path.ecg")
+                .font(.system(size: 48))
+                .foregroundStyle(.secondary)
+            Text("No Results")
+                .font(.title2)
+                .foregroundStyle(.secondary)
+            Text("Press Run (▶) to simulate this deck.")
+                .font(.callout)
+                .foregroundStyle(.tertiary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var runningPlaceholder: some View {
+        VStack(spacing: 12) {
+            ProgressView()
+                .scaleEffect(1.5)
+            Text("Running simulation…")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // MARK: – Tab header
+
+    private var tabHeader: some View {
+        HStack(spacing: 0) {
+            ForEach(ResultTab.allCases) { tab in
+                Button {
+                    selectedTab = tab
+                } label: {
+                    Text(tab.label)
+                        .font(.system(size: 12, weight: selectedTab == tab ? .semibold : .regular))
+                        .padding(.vertical, 6)
+                        .padding(.horizontal, 12)
+                        .background(
+                            selectedTab == tab
+                                ? Color.accentColor.opacity(0.12)
+                                : Color.clear,
+                            in: RoundedRectangle(cornerRadius: 6)
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 8)
+        .padding(.top, 4)
+    }
+
+    // MARK: – Tab content
+
+    @ViewBuilder
+    private func tabContent(_ result: SimulationResult) -> some View {
+        switch selectedTab {
+        case .output:
+            outputTab(result)
+        case .log:
+            logTab(result)
+        }
+    }
+
+    private func outputTab(_ result: SimulationResult) -> some View {
+        Group {
+            if result.failed, !result.hasOutput {
+                VStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.system(size: 32))
+                        .foregroundStyle(.orange)
+                    Text("Simulation Failed")
+                        .font(.headline)
+                    if let msg = result.errorMessage {
+                        Text(msg)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if result.hasOutput {
+                MonospaceTextView(text: result.outputText)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                VStack(spacing: 8) {
+                    Image(systemName: "doc.text")
+                        .font(.system(size: 32))
+                        .foregroundStyle(.secondary)
+                    Text("No output produced.")
+                        .foregroundStyle(.secondary)
+                    Text("The deck may contain an XT card halting output.")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+    }
+
+    private func logTab(_ result: SimulationResult) -> some View {
+        Group {
+            if result.hasLog {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 2) {
+                        ForEach(Array(result.logLines.enumerated()), id: \.offset) { _, line in
+                            Text(line)
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                    .padding(8)
+                }
+            } else {
+                VStack(spacing: 8) {
+                    Image(systemName: "checkmark.circle")
+                        .font(.system(size: 32))
+                        .foregroundStyle(.green)
+                    Text("No log messages.")
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+    }
+}
+
+// MARK: – ResultTab
+
+private enum ResultTab: String, CaseIterable, Identifiable {
+    case output = "Output"
+    case log    = "Log"
+
+    var id: String { rawValue }
+    var label: String { rawValue }
+}
+
+// MARK: – MonospaceTextView
+
+/// NSViewRepresentable wrapping NSTextView for displaying large monospace text.
+/// SwiftUI's Text/ScrollView combo degrades badly for long NEC output (~1000+ lines).
+private struct MonospaceTextView: NSViewRepresentable {
+
+    let text: String
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scrollView = NSTextView.scrollableTextView()
+        if let tv = scrollView.documentView as? NSTextView {
+            tv.isEditable      = false
+            tv.isSelectable    = true
+            tv.font            = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
+            tv.backgroundColor = NSColor.textBackgroundColor
+            tv.textColor       = NSColor.textColor
+            tv.string          = text
+        }
+        return scrollView
+    }
+
+    func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        guard let tv = scrollView.documentView as? NSTextView else { return }
+        if tv.string != text {
+            tv.string = text
+            // Scroll to top on new result
+            tv.scrollToBeginningOfDocument(nil)
+        }
+    }
+}

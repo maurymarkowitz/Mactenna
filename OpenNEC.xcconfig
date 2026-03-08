@@ -1,0 +1,25 @@
+// OpenNEC.xcconfig
+// Build settings for integrating the OpenNEC library.
+//
+// HOW TO USE IN XCODE:
+//   1. Select the Mactenna project in the navigator.
+//   2. For each target (macOS + iOS), go to Build Settings > Based On
+//      Configuration File and choose OpenNEC.xcconfig.
+//   3. The bridging header, header search path, and linker flags are set here.
+//      Xcode will merge these with any existing settings.
+//
+// OpenNEC lives read-only at ~/Developer/OpenNEC — it is NOT copied into this repo.
+
+OPENNEC_ROOT = $(HOME)/Developer/OpenNEC
+
+// Point the compiler to the OpenNEC public headers
+HEADER_SEARCH_PATHS = $(inherited) $(OPENNEC_ROOT)/src
+
+// Point the linker to the pre-built static library.
+// -framework Accelerate provides LAPACK/BLAS routines (zgetrf etc.)
+// required by libonec.a's matrix solver when nec_run_simulation is called.
+LIBRARY_SEARCH_PATHS = $(inherited) $(OPENNEC_ROOT)
+OTHER_LDFLAGS = $(inherited) -lonec -framework Accelerate
+
+// The bridging header that imports opennec.h for Swift
+SWIFT_OBJC_BRIDGING_HEADER = Mactenna/Bridge/MactennaOpenNEC.h
