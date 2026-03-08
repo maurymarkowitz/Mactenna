@@ -32,6 +32,16 @@ final class NECDeck: ObservableObject {
     /// when a new simulation replaces it.
     private var solvedCtx: UnsafeMutablePointer<nec_context_t>?
 
+    // MARK: – Simulation staleness tracking
+
+    /// True if geometry-section or symbol cards have changed since the last
+    /// successful simulation run.  Implies currentsAreStale.
+    private var geometryIsStale: Bool = true
+
+    /// True if any simulation-relevant card has changed since the last
+    /// successful run.  Geometry may still be valid if only control cards changed.
+    private var currentsAreStale: Bool = true
+
     // MARK: – Published state
 
     /// Number of cards currently in the deck — drives NSTableView row count.
@@ -330,6 +340,50 @@ final class NECDeck: ObservableObject {
         return FieldValidation(severity: sev, message: msg)
     }
 
+    // MARK: – Staleness helpers
+
+    /// Returns true if `row` is in the comment-header section (CM/CE lines).
+    /// Comment-section edits are purely cosmetic and never affect simulation.
+    private func isInCommentSection(_ row: Int) -> Bool {
+        guard let dp = deckPtr else { return false }
+        let end = Int(dp.pointee.comment_end)
+        return end >= 0 && row <= end
+    }
+
+    /// Returns true if `row` is in the geometry or symbol section.
+    /// Changes here require recalculating geometry and currents.
+    private func isInGeometrySection(_ row: Int) -> Bool {
+        guard let dp = deckPtr else { return true }  // conservative
+        let d = dp.pointee
+        let symStart = Int(d.symbol_start)
+        let symEnd   = Int(d.symbol_end)
+        let geoStart = Int(d.geometry_start)
+        let geoEnd   = Int(d.geometry_end)
+        if symStart >= 0, symEnd >= symStart, row >= symStart, row <= symEnd { return true }
+        if geoStart >= 0, geoEnd >= geoStart, row >= geoStart, row <= geoEnd { return true }
+        return false
+    }
+
+    /// Mark stale flags for an edit at `row`, using current section indices.
+    /// Comment-section edits are cosmetic and never invalidate.
+    /// Geometry/symbol edits mark both flags; control edits mark only currents.
+    private func invalidate(forEditAt row: Int) {
+        guard !isInCommentSection(row) else { return }
+        if isInGeometrySection(row) {
+            geometryIsStale = true
+        }
+        currentsAreStale = true
+    }
+
+    /// Destroy and nil-out solvedCtx.  Called lazily — only when computeFullPattern
+    /// is about to run and has determined the context is stale, or during tearDown.
+    private func discardSolvedCtx() {
+        if let sc = solvedCtx {
+            nec_destroy_context(sc)
+            solvedCtx = nil
+        }
+    }
+
     // MARK: – Field mutation (Phase 2)
 
     /// Write an integer value into card_t.i[field] (1-based).
@@ -348,6 +402,7 @@ final class NECDeck: ObservableObject {
         }
         card.edited = true
         cards[row] = card
+        invalidate(forEditAt: row)
         editGeneration &+= 1
         objectWillChange.send()
     }
@@ -368,6 +423,7 @@ final class NECDeck: ObservableObject {
         }
         card.edited = true
         cards[row] = card
+        invalidate(forEditAt: row)
         editGeneration &+= 1
         objectWillChange.send()
     }
@@ -407,6 +463,9 @@ final class NECDeck: ObservableObject {
         card.card_code.2 = 0
         card.edited  = true
         cards[row]   = card
+        // Changing a card's type is an aggressive structural change.
+        geometryIsStale  = true
+        currentsAreStale = true
         editGeneration &+= 1
         objectWillChange.send()
     }
@@ -438,6 +497,7 @@ final class NECDeck: ObservableObject {
         card.edited = true
 
         let location = CInt(min(afterIndex + 1, Int(deck_num_cards(deckPtr))))
+        invalidate(forEditAt: afterIndex)  // classify using pre-insert section indices
         insert_card(deckPtr, &card, location)
         update_deck_values(ctx, deckPtr)
 
@@ -456,6 +516,7 @@ final class NECDeck: ObservableObject {
         let snapshot = text()
         guard index >= 0, index < Int(deck_num_cards(deckPtr)) else { return snapshot }
 
+        invalidate(forEditAt: index)  // classify using pre-delete section indices
         remove_card(deckPtr, CInt(index))
         update_deck_values(ctx, deckPtr)
 
@@ -526,6 +587,7 @@ final class NECDeck: ObservableObject {
         guard dst >= 0, dst <= Int(deck_num_cards(deckPtr)) else { return }
         guard dst != src, dst != src + 1 else { return }
 
+        invalidate(forEditAt: src)  // moving a geometry card invalidates geometry
         move_card(deckPtr, CInt(src), CInt(dst))
         update_deck_values(ctx, deckPtr)
 
@@ -569,6 +631,7 @@ final class NECDeck: ObservableObject {
 
         cards[row] = card
         update_deck_values(ctx, deckPtr)
+        invalidate(forEditAt: row)
         editGeneration &+= 1
         objectWillChange.send()
     }
@@ -743,11 +806,13 @@ final class NECDeck: ObservableObject {
             let patCtx: UnsafeMutablePointer<nec_context_t>
             var freshCtx: UnsafeMutablePointer<nec_context_t>? = nil
 
-            if let ec = existingCtx, ec.pointee.frequency_loop_ran {
-                // Existing geometry + currents are valid — cheapest path.
+            if let ec = existingCtx, !geometryIsStale, !currentsAreStale {
+                // Existing geometry + currents match the current deck state.
                 patCtx = ec
                 print("[computeFullPattern] reusing solved context")
             } else {
+                // Stale or missing context — discard it now (lazy) and recompute.
+                DispatchQueue.main.sync { self.discardSolvedCtx() }
                 // No solved context yet; run nec_run_simulation on the live
                 // deck_t so geometry and currents are computed.
                 guard let newCtx = nec_create_context() else {
@@ -919,6 +984,11 @@ final class NECDeck: ObservableObject {
             DispatchQueue.main.async {
                 if let old = self.solvedCtx { nec_destroy_context(old) }
                 self.solvedCtx = ctxToStore
+                if ctxToStore != nil {
+                    // Simulation succeeded with the current deck state.
+                    self.geometryIsStale  = false
+                    self.currentsAreStale = false
+                }
                 self.simulationResult = result
                 self.isRunning = false
             }
@@ -1036,6 +1106,8 @@ final class NECDeck: ObservableObject {
             nec_destroy_context(sc)
             solvedCtx = nil
         }
+        geometryIsStale  = true
+        currentsAreStale = true
         cardCount = 0
     }
 }

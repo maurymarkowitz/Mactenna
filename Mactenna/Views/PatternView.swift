@@ -113,8 +113,9 @@ struct PatternView: NSViewRepresentable {
             }
 
             let vertexSource = SCNGeometrySource(vertices: vertices)
-            
-            // calculate smooth normals by normalizing each vertex position
+
+            // normals are no longer required when using constant lighting,
+            // but keep the calculation in case we revert to a lit model later.
             var normals: [SCNVector3] = []
             normals.reserveCapacity(vertices.count)
             for v in vertices {
@@ -138,7 +139,7 @@ struct PatternView: NSViewRepresentable {
                                                bytesPerComponent: MemoryLayout<Float>.size,
                                                dataOffset: 0,
                                                dataStride: MemoryLayout<Float>.size * 4)
-            
+
             // build triangle indices
             var indices: [Int32] = []
             for i in 0..<(nTheta - 1) {
@@ -159,7 +160,7 @@ struct PatternView: NSViewRepresentable {
                                          bytesPerIndex: MemoryLayout<Int32>.size)
             let geom = SCNGeometry(sources: [vertexSource, normalSource, colorSource], elements: [elem])
             let mat = SCNMaterial()
-            mat.lightingModel = .blinn
+            mat.lightingModel = .constant   // unlit: display vertex colors exactly
             mat.isDoubleSided = true
             geom.firstMaterial = mat
             let meshNode = SCNNode(geometry: geom)
