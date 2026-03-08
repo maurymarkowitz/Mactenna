@@ -200,6 +200,12 @@ struct PatternView: NSViewRepresentable {
             mat.transparencyMode = .aOne
             geom.firstMaterial = mat
             let meshNode = SCNNode(geometry: geom)
+            // centre the mesh by shifting it so its bounding box is origin‑centred.
+            let (minB, maxB) = geom.boundingBox
+            let cx = (minB.x + maxB.x) / 2
+            let cy = (minB.y + maxB.y) / 2
+            let cz = (minB.z + maxB.z) / 2
+            meshNode.position = SCNVector3(-cx, -cy, -cz)
             scene.rootNode.addChildNode(meshNode)
         }
 
