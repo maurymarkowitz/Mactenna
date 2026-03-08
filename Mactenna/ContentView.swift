@@ -45,9 +45,11 @@ struct ContentView: View {
                 .frame(minWidth: 600)
 
             // ── Results pane ──────────────────────────────────────────────
-            ResultsView(result: deck.simulationResult, isRunning: deck.isRunning)
+            ResultsView(deck: deck)
                 .frame(minWidth: 300)
         }
+        // ensure the window opens large enough that the comment column is visible
+        .frame(minWidth: 1000, minHeight: 600)
         .toolbar {
             // ― Add / delete card row ――――――――――――――――――――――――――――――――――――――――
             // Note: .navigation placement is silently dropped in DocumentGroup

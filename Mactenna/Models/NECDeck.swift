@@ -26,6 +26,12 @@ final class NECDeck: ObservableObject {
     private var ctx: UnsafeMutablePointer<nec_context_t>?
     private var deckPtr: UnsafeMutablePointer<deck_t>?
 
+    /// The most recent successful simulation context, retained so that
+    /// computeFullPattern() can reuse already-computed geometry and currents
+    /// without re-parsing the deck.  Destroyed when the deck is reloaded or
+    /// when a new simulation replaces it.
+    private var solvedCtx: UnsafeMutablePointer<nec_context_t>?
+
     // MARK: – Published state
 
     /// Number of cards currently in the deck — drives NSTableView row count.
@@ -206,8 +212,8 @@ final class NECDeck: ObservableObject {
     func card(at index: Int) -> DeckRow? {
         guard let deckPtr,
               index >= 0,
-              index < Int(deckPtr.pointee.num_cards),
-              let cards = deckPtr.pointee.cards
+              index < Int(deck_num_cards(deckPtr)),
+              let cards = deck_cards(deckPtr)
         else { return nil }
 
         // Work with a pointer to avoid copying the card when calling lookup_formula.
@@ -234,8 +240,18 @@ final class NECDeck: ObservableObject {
             return (1...7).map { ptr[$0] }
         }
 
-        // comment is char * — an optional C string pointer.
-        let comment: String = c.comment.map { String(cString: $0) } ?? ""
+        // comment is char * — an optional C string pointer.  On simple
+        // CM/CE/! lines it holds the entire remainder of the line.  For most
+        // cards, inline comments are stored in `extn_str` instead; fall back
+        // to that when `comment` is nil/empty so the UI matches the on‑disk text.
+        var comment: String = ""
+        if let cstr = c.comment, cstr.pointee != 0 {
+            comment = String(cString: cstr)
+        } else if let ext = c.extn_str, ext.pointee != 0 {
+            comment = String(cString: ext)
+        }
+        // normalize whitespace; comments often start with a space
+        comment = comment.trimmingCharacters(in: .whitespaces)
 
         // Formula strings for I1–I4 and F1–F7.  lookup_formula returns nil when
         // the field is a plain numeric literal rather than a formula expression.
@@ -278,6 +294,10 @@ final class NECDeck: ObservableObject {
         let iValidations = (0..<4).map  { makeFieldValidation(vResults[$0]) }
         let fValidations = (4..<11).map { makeFieldValidation(vResults[$0]) }
 
+        // compute invisibility using the C helper; card_t doesn’t actually
+        // contain an `invisible` field, it’s derived from ignore+cmt_code.
+        let invisibleFlag = card_is_invisible(cardPtr)
+
         return DeckRow(id: index,
                        cardCode: code,
                        i: iFields,
@@ -287,7 +307,9 @@ final class NECDeck: ObservableObject {
                        fFormulas: fFormulas,
                        symbols: symbols,
                        iValidations: iValidations,
-                       fValidations: fValidations)
+                       fValidations: fValidations,
+                       isIgnored: c.ignore,
+                       isInvisible: invisibleFlag)
     }
 
     // MARK: – Private helpers
@@ -315,9 +337,9 @@ final class NECDeck: ObservableObject {
     func setIntField(row: Int, field: Int, value: Int) {
         guard !isRunning else { return }
         guard let deckPtr,
-              row   >= 0, row   < Int(deckPtr.pointee.num_cards),
+              row   >= 0, row   < Int(deck_num_cards(deckPtr)),
               field >= 1, field <= 4,
-              let cards = deckPtr.pointee.cards else { return }
+              let cards = deck_cards(deckPtr) else { return }
         var card = cards[row]
         withUnsafeMutableBytes(of: &card.i) { raw in
             raw.storeBytes(of: CInt(value),
@@ -335,9 +357,9 @@ final class NECDeck: ObservableObject {
     func setFloatField(row: Int, field: Int, value: Double) {
         guard !isRunning else { return }
         guard let deckPtr,
-              row   >= 0, row   < Int(deckPtr.pointee.num_cards),
+              row   >= 0, row   < Int(deck_num_cards(deckPtr)),
               field >= 1, field <= 7,
-              let cards = deckPtr.pointee.cards else { return }
+              let cards = deck_cards(deckPtr) else { return }
         var card = cards[row]
         withUnsafeMutableBytes(of: &card.f) { raw in
             raw.storeBytes(of: value,
@@ -355,8 +377,8 @@ final class NECDeck: ObservableObject {
     func setComment(row: Int, text: String) {
         guard !isRunning else { return }
         guard let deckPtr,
-              row >= 0, row < Int(deckPtr.pointee.num_cards),
-              let cards = deckPtr.pointee.cards else { return }
+              row >= 0, row < Int(deck_num_cards(deckPtr)),
+              let cards = deck_cards(deckPtr) else { return }
         var card = cards[row]
         // Free the old C-heap string before overwriting the pointer.
         if let old = card.comment {
@@ -375,8 +397,8 @@ final class NECDeck: ObservableObject {
     func setCardCode(row: Int, code: String) {
         guard !isRunning else { return }
         guard let deckPtr,
-              row >= 0, row < Int(deckPtr.pointee.num_cards),
-              let cards = deckPtr.pointee.cards else { return }
+              row >= 0, row < Int(deck_num_cards(deckPtr)),
+              let cards = deck_cards(deckPtr) else { return }
         var card = cards[row]
         // card_code is char[3] — a Swift tuple (CChar, CChar, CChar).
         let bytes = Array(code.uppercased().utf8.prefix(2))
@@ -415,7 +437,7 @@ final class NECDeck: ObservableObject {
         }
         card.edited = true
 
-        let location = CInt(min(afterIndex + 1, Int(deckPtr.pointee.num_cards)))
+        let location = CInt(min(afterIndex + 1, Int(deck_num_cards(deckPtr))))
         insert_card(deckPtr, &card, location)
         update_deck_values(ctx, deckPtr)
 
@@ -432,7 +454,7 @@ final class NECDeck: ObservableObject {
         guard !isRunning else { return text() }
         guard let deckPtr, let ctx else { return text() }
         let snapshot = text()
-        guard index >= 0, index < Int(deckPtr.pointee.num_cards) else { return snapshot }
+        guard index >= 0, index < Int(deck_num_cards(deckPtr)) else { return snapshot }
 
         remove_card(deckPtr, CInt(index))
         update_deck_values(ctx, deckPtr)
@@ -458,6 +480,11 @@ final class NECDeck: ObservableObject {
         let geoEnd   = Int(d.geometry_end)
         let deckEnd  = Int(d.deck_end)
         guard index >= 0, index < n else { return nil }
+        // do not allow dragging of cards that are currently ignored
+        // deck_t is treated as opaque in Swift, so use our C helper instead
+        if let cardPtr = deck_card_at(dp, Int32(index)), cardPtr.pointee.ignore {
+            return nil
+        }
 
         // GE, EN, and anything past EN are structural anchors — not draggable
         if geoEnd  >= 0, index == geoEnd  { return nil }
@@ -495,14 +522,72 @@ final class NECDeck: ObservableObject {
     func moveCard(from src: Int, to dst: Int) {
         guard !isRunning else { return }
         guard let deckPtr, let ctx else { return }
-        guard src >= 0, src < Int(deckPtr.pointee.num_cards) else { return }
-        guard dst >= 0, dst <= Int(deckPtr.pointee.num_cards) else { return }
+        guard src >= 0, src < Int(deck_num_cards(deckPtr)) else { return }
+        guard dst >= 0, dst <= Int(deck_num_cards(deckPtr)) else { return }
         guard dst != src, dst != src + 1 else { return }
 
         move_card(deckPtr, CInt(src), CInt(dst))
         update_deck_values(ctx, deckPtr)
 
         cardCount = Int(deckPtr.pointee.num_cards)
+        editGeneration &+= 1
+        objectWillChange.send()
+    }
+
+    /// Mark or unmark a card as ignored (commented-out).
+    /// This calls the C helpers `card_disable`/`card_enable` and updates
+    /// the deck values so counts/geometry stay in sync.
+    func setIgnored(row: Int, ignore: Bool) {
+        guard !isRunning else { return }
+        guard let deckPtr, let ctx else { return }
+        guard row >= 0, row < Int(deck_num_cards(deckPtr)),
+              let cards = deck_cards(deckPtr) else { return }
+        var card = cards[row]
+
+        if ignore {
+            // use the C helper which also sets cmt_code and recalculates
+            // section indices; we’ll double-check the markers below.
+            card_disable(deckPtr, &card)
+            // ensure the ignore flag is true and there is a leading marker
+            card.ignore = true
+            if card.cmt_code == 0 {
+                let marker: CChar = deckPtr.pointee.cmt_code != 0
+                    ? deckPtr.pointee.cmt_code
+                    : CChar(bitPattern: UInt8(ascii: "!"))
+                withUnsafeMutableBytes(of: &card.cmt_code) { ptr in
+                    ptr.storeBytes(of: marker, as: CChar.self)
+                }
+            }
+        } else {
+            card_enable(deckPtr, &card)
+            // clear both flag and marker in case the helper missed them
+            card.ignore = false
+            withUnsafeMutableBytes(of: &card.cmt_code) { ptr in
+                ptr.storeBytes(of: CChar(0), as: CChar.self)
+            }
+        }
+
+        cards[row] = card
+        update_deck_values(ctx, deckPtr)
+        editGeneration &+= 1
+        objectWillChange.send()
+    }
+
+    /// Toggle the `invisible` flag on a card.  Unlike `setIgnored`, this has
+    /// no impact on editing or drag-drop behaviour; the checkbox is purely
+    /// informational and stored in the deck_t structure.
+    func setInvisible(row: Int, invisible: Bool) {
+        guard !isRunning else { return }
+        guard let deckPtr, let ctx else { return }
+        guard row >= 0, row < Int(deck_num_cards(deckPtr)),
+              let cards = deck_cards(deckPtr) else { return }
+        var card = cards[row]
+        //card.invisible = invisible ? 1 : 0 //TODO: turn this on once added to card_t
+        card.edited = true
+        cards[row] = card
+        // no need to call update_deck_values, invisibility doesn't affect
+        // computed counts, but doing so is harmless and keeps state synced.
+        update_deck_values(ctx, deckPtr)
         editGeneration &+= 1
         objectWillChange.send()
     }
@@ -520,12 +605,13 @@ final class NECDeck: ObservableObject {
     func debugDumpCard(at index: Int) {
         guard let deckPtr,
               index >= 0,
-              index < Int(deckPtr.pointee.num_cards),
-              let cards = deckPtr.pointee.cards
+              index < Int(deck_num_cards(deckPtr)),
+              let cards = deck_cards(deckPtr)
         else {
             simulationResult = SimulationResult(failed: true,
                 errorMessage: "Card \(index) out of range (deck has \(cardCount) cards)",
-                outputText: "", logLines: [])
+                outputText: "", logLines: [],
+                radiationPattern: [], patternMaxGain: 0, patternAvgPower: 0)
             return
         }
 
@@ -622,10 +708,96 @@ final class NECDeck: ObservableObject {
 
         simulationResult = SimulationResult(failed: false, errorMessage: nil,
                                             outputText: lines.joined(separator: "\n"),
-                                            logLines: [])
+                                            logLines: [],
+                                            radiationPattern: [], patternMaxGain: 0, patternAvgPower: 0)
     }
 
     // MARK: – Simulation (Phase 3)
+
+    /// Compute a full‑sphere radiation pattern using existing geometry and
+    /// currents when available (no text serialisation or file I/O).
+    ///
+    /// If a prior `runSimulation()` succeeded, its context (`solvedCtx`) is
+    /// reused: `fpat` is configured for the full sphere and
+    /// `compute_radiation_pattern()` is called directly — exactly the
+    /// "extra patterns" path that NEC uses for a bare RP card with no new FR.
+    ///
+    /// If no solved context exists, a fresh one is created and
+    /// `nec_run_simulation()` is run against the live `deck_t` (still no
+    /// text round-trip).  The resulting context is stored for future reuse.
+    ///
+    /// Results are returned asynchronously on the main thread.
+    func computeFullPattern(stepDegrees: Double = 5.0,
+                            completion: @escaping ([SimulationResult.RadiationPoint]) -> Void) {
+        guard stepDegrees > 0 else { completion([]); return }
+        guard let deckPtr else { completion([]); return }
+
+        // Capture the solved-context pointer on the calling (main) thread so
+        // the background closure doesn't race with runSimulation().
+        let existingCtx = solvedCtx
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
+
+            // ── Resolve which context to use ─────────────────────────────
+            let patCtx: UnsafeMutablePointer<nec_context_t>
+            var freshCtx: UnsafeMutablePointer<nec_context_t>? = nil
+
+            if let ec = existingCtx, ec.pointee.frequency_loop_ran {
+                // Existing geometry + currents are valid — cheapest path.
+                patCtx = ec
+                print("[computeFullPattern] reusing solved context")
+            } else {
+                // No solved context yet; run nec_run_simulation on the live
+                // deck_t so geometry and currents are computed.
+                guard let newCtx = nec_create_context() else {
+                    DispatchQueue.main.async { completion([]) }
+                    return
+                }
+                let rc = nec_run_simulation(newCtx, deckPtr)
+                guard rc == 0, newCtx.pointee.frequency_loop_ran else {
+                    print("[computeFullPattern] fresh simulation failed (rc=\(rc), freq_loop_ran=\(newCtx.pointee.frequency_loop_ran))")
+                    nec_destroy_context(newCtx)
+                    DispatchQueue.main.async { completion([]) }
+                    return
+                }
+                freshCtx = newCtx
+                patCtx  = newCtx
+                print("[computeFullPattern] ran fresh simulation on existing deck")
+            }
+
+            // ── Compute full-sphere pattern ───────────────────────────────
+            // nec_compute_full_pattern sets ctx->fpat, scales geometry to
+            // wavelengths, calls compute_radiation_pattern, then restores.
+            let rc = nec_compute_full_pattern(patCtx, stepDegrees)
+            var points: [SimulationResult.RadiationPoint] = []
+            if rc == 0 {
+                let nrp = Int(nec_result_rpat_npoints(patCtx))
+                if nrp > 0 {
+                    for i in 0..<nrp {
+                        let theta = nec_result_rpat_theta(patCtx, Int32(i))
+                        let phi   = nec_result_rpat_phi(patCtx,   Int32(i))
+                        let gain  = nec_result_rpat_gtot(patCtx,  Int32(i))
+                        points.append(.init(theta: theta, phi: phi, gain: gain))
+                    }
+                    print("[computeFullPattern] got \(points.count) points")
+                } else {
+                    print("[computeFullPattern] no pattern points returned")
+                }
+            } else {
+                print("[computeFullPattern] nec_compute_full_pattern returned \(rc)")
+            }
+
+            DispatchQueue.main.async {
+                // Promote a freshly created context to solvedCtx for future reuse.
+                if let fc = freshCtx {
+                    if let old = self.solvedCtx { nec_destroy_context(old) }
+                    self.solvedCtx = fc
+                }
+                completion(points)
+            }
+        }
+    }
 
     /// Run the NEC simulation in a background queue.
     ///
@@ -657,7 +829,8 @@ final class NECDeck: ObservableObject {
                 DispatchQueue.main.async {
                     self.simulationResult = SimulationResult(
                         failed: true, errorMessage: "Could not create simulation context",
-                        outputText: "", logLines: [])
+                        outputText: "", logLines: [],
+                        radiationPattern: [], patternMaxGain: 0, patternAvgPower: 0)
                     self.isRunning = false
                 }
                 return
@@ -666,15 +839,15 @@ final class NECDeck: ObservableObject {
             // ── Pre-run diagnostics ───────────────────────────────────────
             capture.lines.append("── PRE-RUN DIAGNOSTICS ─────────────────────────────────────")
             capture.lines.append("deck_t structural fields:")
-            capture.lines.append("  num_cards      = \(deckPtr.pointee.num_cards)")
+            capture.lines.append("  num_cards      = \(deck_num_cards(deckPtr))")
             capture.lines.append("  geometry_start = \(deckPtr.pointee.geometry_start)")
             capture.lines.append("  geometry_end   = \(deckPtr.pointee.geometry_end)")
             capture.lines.append("  deck_end       = \(deckPtr.pointee.deck_end)")
             capture.lines.append("  comment_end    = \(deckPtr.pointee.comment_end)")
             capture.lines.append("")
             capture.lines.append("Card codes in deck:")
-            if let cards = deckPtr.pointee.cards {
-                for i in 0..<Int(deckPtr.pointee.num_cards) {
+            if let cards = deck_cards(deckPtr) {
+                for i in 0..<Int(deck_num_cards(deckPtr)) {
                     let c = cards[i]
                     let code = withUnsafeBytes(of: c.card_code) { raw -> String in
                         let bytes = raw.prefix(while: { $0 != 0 })
@@ -704,21 +877,48 @@ final class NECDeck: ObservableObject {
             let elapsed = Date().timeIntervalSince(runStart)
 
             // ── Read results directly from the context structs ─────────────
+            // ── Read radiation pattern points while context still valid ──
+            var patternPoints: [SimulationResult.RadiationPoint] = []
+            var patGmax: Double = 0.0
+            var patPint: Double = 0.0
+            let nrp = Int(nec_result_rpat_npoints(simCtx))
+            if nrp > 0 {
+                patGmax = nec_result_rpat_gmax(simCtx)
+                patPint = nec_result_rpat_pint(simCtx)
+                patternPoints.reserveCapacity(nrp)
+                for i in 0..<nrp {
+                    let theta = nec_result_rpat_theta(simCtx, Int32(i))
+                    let phi   = nec_result_rpat_phi(simCtx,   Int32(i))
+                    let gain  = nec_result_rpat_gtot(simCtx,  Int32(i))
+                    patternPoints.append(.init(theta: theta, phi: phi, gain: gain))
+                }
+            }
+
             let outputText = NECDeck.formatResults(ctx: simCtx, elapsed: elapsed,
                                                    failed: rc != 0)
 
             // ── Cleanup ───────────────────────────────────────────────────
             let logLines = capture.lines
             Unmanaged<LogCapture>.fromOpaque(rawCapture).release()
-            nec_destroy_context(simCtx)
+
+            // Keep the context alive on success: computeFullPattern() reuses
+            // the already-computed geometry and currents without a re-parse.
+            // On failure the context is destroyed immediately.
+            let ctxToStore: UnsafeMutablePointer<nec_context_t>? = rc == 0 ? simCtx : nil
+            if rc != 0 { nec_destroy_context(simCtx) }
 
             let result = SimulationResult(
                 failed: rc != 0,
                 errorMessage: rc != 0 ? "nec_run_simulation returned \(rc)" : nil,
                 outputText: outputText,
-                logLines: logLines)
+                logLines: logLines,
+                radiationPattern: patternPoints,
+                patternMaxGain: patGmax,
+                patternAvgPower: patPint)
 
             DispatchQueue.main.async {
+                if let old = self.solvedCtx { nec_destroy_context(old) }
+                self.solvedCtx = ctxToStore
                 self.simulationResult = result
                 self.isRunning = false
             }
@@ -831,6 +1031,10 @@ final class NECDeck: ObservableObject {
         if let c = ctx {
             nec_destroy_context(c)
             ctx = nil
+        }
+        if let sc = solvedCtx {
+            nec_destroy_context(sc)
+            solvedCtx = nil
         }
         cardCount = 0
     }

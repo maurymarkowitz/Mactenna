@@ -40,6 +40,10 @@ private let columns: [Col] = [
     Col(id: "F5",      title: "F5",      minWidth: 52,  idealWidth: 52,  maxWidth: 200,  alignment: .right),
     Col(id: "F6",      title: "F6",      minWidth: 52,  idealWidth: 52,  maxWidth: 200,  alignment: .right),
     Col(id: "F7",      title: "F7",      minWidth: 52,  idealWidth: 52,  maxWidth: 200,  alignment: .right),
+    // checkbox column: toggles card.ignore state
+    Col(id: "ignore",  title: "Ignored", minWidth: 24,  idealWidth: 24,  maxWidth: 30,   alignment: .center),
+    // second checkbox column: toggles card.invisible flag
+    Col(id: "invisible", title: "Invisible", minWidth: 24, idealWidth: 24, maxWidth: 30, alignment: .center),
     Col(id: "comment", title: "Comment", minWidth: 60,  idealWidth: 200, maxWidth: 500,  alignment: .left),
 ]
 
@@ -96,10 +100,32 @@ struct DeckTableView: NSViewRepresentable {
             tc.width = col.idealWidth
             tc.maxWidth = col.maxWidth
             tc.resizingMask = .userResizingMask
+
+            // Add a tooltip describing the column purpose.  Keep it brief;
+            // specific field tooltips are provided by the editable cells themselves.
+            let tip: String
+            switch col.id {
+            case "rownum":     tip = "Row number (1‑based)"
+            case "ignore":     tip = "Check to comment out (ignore) the card"
+            case "invisible":  tip = "Mark card invisible (no other effect)"
+            case "card":       tip = "NEC card type (two-letter code)"
+            case "comment":    tip = "Comment text attached to the card"
+            default:
+                if col.id.hasPrefix("I") {
+                    tip = "Integer field \(col.id.dropFirst())"
+                } else if col.id.hasPrefix("F") {
+                    tip = "Float field \(col.id.dropFirst())"
+                } else {
+                    tip = col.title
+                }
+            }
+            //tc.headerCell.toolTip = tip
+
             if col.alignment == .right {
                 let header = NSTableHeaderCell()
                 header.title = col.title
                 header.alignment = .right
+                //header.toolTip = tip
                 tc.headerCell = header
             }
             tableView.addTableColumn(tc)
@@ -181,6 +207,24 @@ struct DeckTableView: NSViewRepresentable {
             onCommitEdit(popup.row, "card", code)
         }
 
+        // MARK: Ignore checkbox action
+        @objc func ignoreCheckboxToggled(_ sender: NSButton) {
+            let row = sender.tag
+            let shouldIgnore = (sender.state == .on)
+            deck.setIgnored(row: row, ignore: shouldIgnore)
+            tableView?.reloadData()
+        }
+
+        // MARK: Invisible checkbox action
+        @objc func invisibleCheckboxToggled(_ sender: NSButton) {
+            let row = sender.tag
+            let shouldBeInvisible = (sender.state == .on)
+            deck.setInvisible(row: row, invisible: shouldBeInvisible)
+            // no visual change required, but update the cell in case external
+            // code reads the property for some reason.
+            tableView?.reloadData()
+        }
+
         // MARK: NSTableViewDataSource
 
         func numberOfRows(in tableView: NSTableView) -> Int {
@@ -253,6 +297,34 @@ struct DeckTableView: NSViewRepresentable {
                   let colID = tableColumn?.identifier.rawValue else { return nil }
 
             // ── Row number column — always read-only ─────────────────────
+            if colID == "ignore" {
+                let cellID = NSUserInterfaceItemIdentifier("cell.ignore")
+                let button: NSButton
+                if let reused = tableView.makeView(withIdentifier: cellID, owner: self) as? NSButton {
+                    button = reused
+                } else {
+                    button = NSButton(checkboxWithTitle: "", target: self, action: #selector(ignoreCheckboxToggled(_:)))
+                    button.identifier = cellID
+                }
+                button.tag = row
+                button.state = deckRow.isIgnored ? .on : .off
+                button.isEnabled = true
+                return button
+            }
+            if colID == "invisible" {
+                let cellID = NSUserInterfaceItemIdentifier("cell.invisible")
+                let button: NSButton
+                if let reused = tableView.makeView(withIdentifier: cellID, owner: self) as? NSButton {
+                    button = reused
+                } else {
+                    button = NSButton(checkboxWithTitle: "", target: self, action: #selector(invisibleCheckboxToggled(_:)))
+                    button.identifier = cellID
+                }
+                button.tag = row
+                button.state = deckRow.isInvisible ? .on : .off
+                button.isEnabled = true
+                return button
+            }
             if colID == "rownum" {
                 let cellID = NSUserInterfaceItemIdentifier("cell.rownum")
                 let cell: NSTextField
@@ -322,9 +394,10 @@ struct DeckTableView: NSViewRepresentable {
             let isSpanning = isTextCard || isSYCard
 
             // For spanning cards every column except "rownum", "card", and "I1"
-            // is empty.  Returning nil leaves those cells undrawn so the spanning
+            // is empty, **with one exception**: SY cards still render the comment
+            // column.  Returning nil leaves those cells undrawn so the spanning
             // label can paint over them without obstruction.
-            if isSpanning && colID != "rownum" && colID != "card" && colID != "I1" {
+            if isSpanning && colID != "rownum" && colID != "card" && colID != "I1" && !(isSYCard && colID == "comment") {
                 return nil
             }
 
@@ -364,7 +437,8 @@ struct DeckTableView: NSViewRepresentable {
                 label.frame = NSRect(x: 0, y: 0, width: 2000, height: 18)
 
                 if isSYCard {
-                    // SY: show symbol assignments; not user-editable here
+                    // SY: show symbol assignments only; comment will appear in its
+                    // own column so the user may edit it if desired.
                     label.stringValue  = deckRow.symbols
                     label.textColor    = .systemPurple
                     label.isEditable   = false
@@ -379,8 +453,12 @@ struct DeckTableView: NSViewRepresentable {
 
             // ── Normal cell ───────────────────────────────────────────────
             let text  = cellText(for: colID, row: deckRow)
-            let color = cellColor(for: colID, row: deckRow)
+            var color = cellColor(for: colID, row: deckRow)
             let align = columns.first { $0.id == colID }?.alignment ?? .left
+            // override for ignored cards
+            if deckRow.isIgnored {
+                color = .tertiaryLabelColor
+            }
 
             // "card" column is never editable; everything else is.
             let isEditable = colID != "card"
@@ -402,8 +480,9 @@ struct DeckTableView: NSViewRepresentable {
 
             cell.row            = row
             cell.colID          = colID
-            cell.isEditable     = isEditable
-            cell.delegate       = isEditable ? self : nil
+            // prevent editing commented-out rows
+            cell.isEditable     = (isEditable && !deckRow.isIgnored)
+            cell.delegate       = cell.isEditable ? self : nil
             cell.lineBreakMode  = .byTruncatingTail
             cell.stringValue    = text
             cell.textColor      = color
@@ -549,6 +628,8 @@ struct DeckTableView: NSViewRepresentable {
         private func cellColor(for colID: String, row: DeckRow) -> NSColor {
             let isTextCard = ["CM", "CE", "!", "'", "#"].contains(row.cardCode)
             let isSYCard   = row.cardCode == "SY"
+            // grey out entire row if ignored
+            if row.isIgnored { return .tertiaryLabelColor }
             if colID == "card"    { return categoryColor(row.cardType.category) }
             // Spanning I1 gets the card-appropriate text colour
             if isSYCard   && colID == "I1" { return .systemPurple }

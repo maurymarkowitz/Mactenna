@@ -32,6 +32,24 @@ struct SimulationResult {
     /// Level 0 = info, higher = warnings/errors (mirrors C enum).
     let logLines: [String]
 
+    // MARK: – Radiation pattern data
+
+    /// Single point from the RP table (θ, φ angles and total gain in dBi).
+    struct RadiationPoint {
+        let theta: Double  // degrees
+        let phi:   Double  // degrees
+        let gain:  Double  // dBi
+    }
+
+    /// 3‑D radiation pattern points extracted from the context.
+    let radiationPattern: [RadiationPoint]
+
+    /// Maximum gain provided by the context (gmax) or 0 if none.
+    let patternMaxGain: Double
+
+    /// Average power from the context (pint) or 0 if none.
+    let patternAvgPower: Double
+
     // MARK: – Summary convenience
 
     /// True if outputText is non-empty (simulation produced printable results).

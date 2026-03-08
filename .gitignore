@@ -1,5 +1,6 @@
 # Xcode build artifacts
 DerivedData/
+DerivedData/**/Logs/
 build/
 *.xcworkspace/xcuserdata/
 *.xcuserstate

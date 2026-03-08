@@ -93,7 +93,8 @@
 - [x] `Info.plist` — UTType `net.maury.mactenna.nec-deck` declared for `.nec` / `.deck`
 - [x] `MactennaDocument.swift` — thin `FileDocument`; holds raw text only; passes to `NECDeck` on open, reads back on save
 - [x] `Models/NECCardType.swift` — enum of all NEC card mnemonics with category, `displayName`, and per-card int/float field labels
-- [x] `Models/DeckRow.swift` — read-only display proxy; values copied from `card_t.i` / `card_t.f` on demand; no parser
+- [x] `Models/DeckRow.swift` — read-only display proxy; values copied from `card_t.i` / `card_t.f` on demand; comments come from `card_t.comment` or `card_t.extn_str` (SY cards now show comment in comment column); also records `isIgnored` for commented‑out cards
+
 - [x] `Models/NECDeck.swift` — Swift `ObservableObject` owning `deck_t *` and `nec_context_t *`; calls `read_deck`, `parse_deck`, `update_deck_values`; exposes `card(at:)` and `text()`
 - [x] `Views/DeckTableView.swift` — `NSViewRepresentable` wrapping `NSTableView`; reads card data from `NECDeck`; 13 columns; comment rows span I1 column; category colour coding
 - [x] `ContentView.swift` — `HSplitView`; creates `@StateObject NECDeck` from document text; syncs back on change
@@ -125,9 +126,12 @@
 - [x] `OpenNEC.xcconfig` — added `-framework Accelerate` for LAPACK `zgetrf` (pulled in by matrix solver)
 
 ### Phase 4 — 3D Radiation Pattern
-- [ ] Parse RP output data
-- [ ] Build 3D pattern mesh
-- [ ] Interactive SceneKit or RealityKit view
+- [x] Begin Phase 4 work: add SceneKit-based view scaffold (PatternView.swift)
+- [x] Allow viewer to compute full‑sphere pattern on demand (5° steps) without
+      modifying deck RP cards
+- [ ] Parse RP output data (radiation pattern tables in outputText)
+- [ ] Build 3D pattern mesh from theta/phi/gain values
+- [ ] Interactive SceneKit view
 - [ ] Color mapping and legend
 
 ### Phase 5 — 3D Geometry Viewer
@@ -191,5 +195,6 @@ deck_t *                                 unit conversion, formula eval
 2. ✅ Phase 2 complete — in-place editing, add/delete rows, full undo/redo
 3. **Phase 3** — Wire `nec_run_simulation()`: background `Task`, capture log via `nec_set_log_callback`, enable Run toolbar button, show results pane
 4. **Phase 2 enhancement** — Card type picker when inserting rows (currently always inserts `GW`); drag-to-reorder rows
-5. **Phase 2 enhancement** — Formula cell tooltip: cells that display a formula expression (e.g. `lambda/4`) should show the calculated numeric value as a tooltip on hover (`NSView.toolTip`); requires passing `i`/`f` alongside `iFormulas`/`fFormulas` in `DeckRow` and setting `toolTip` on the `EditableCell` in `tableView(_:viewFor:row:)`
-5. Add iOS target and `List`-based `DeckTableView` counterpart behind `#if os(macOS)` / `#else`
+5. **Phase 2 enhancement** — Formula cell tooltip: cells that display a formula expression (e.g. `lambda/4`) should show the calculated numeric value as a tooltip on hover (`NSView.toolTip`); requires passing `i`/`f` alongside `iFormulas`/`fFormulas` in `DeckRow` and setting `toolTip` on the `EditableCell` in `tableView(_:viewFor:row:)`.  Commented‑out cards are greyed and non‑editable.
+6. **Phase 2 enhancement** — Add checkbox columns to toggle `card.ignore` and `card.invisible`.  The "Ignored" column behaves as before (greyed, non‑editable).  The new "Invisible" column simply flips the invisible flag with no other effect.
+7. Add iOS target and `List`-based `DeckTableView` counterpart behind `#if os(macOS)` / `#else`

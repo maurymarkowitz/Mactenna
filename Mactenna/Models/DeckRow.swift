@@ -37,7 +37,8 @@ struct DeckRow: Identifiable {
     let cardCode: String
     let i: [Int]          // 4 elements: i[1]..i[4] (calculated values)
     let f: [Double]       // 7 elements: f[1]..f[7] (calculated values)
-    let comment: String
+    let comment: String  // may come from card_t.comment or, for inline
+                       // comments on geometry/control cards, card_t.extn_str
 
     /// Formula strings for integer fields I1–I4 (nil if the field is a plain number).
     let iFormulas: [String?]  // 4 elements, indexed 0–3 matching i[]
@@ -51,6 +52,14 @@ struct DeckRow: Identifiable {
     /// Per-field validation results from validate_card_all_fields().
     let iValidations: [FieldValidation]  // 4 elements: I1–I4
     let fValidations: [FieldValidation]  // 7 elements: F1–F7
+
+    /// True if the card was commented-out/ignored (`card_t.ignore`).
+    /// Such rows are rendered grey and are not editable.
+    let isIgnored: Bool
+
+    /// True if the card has been marked invisible (`card_t.invisible`).
+    /// This flag currently has no UI effect beyond the checkbox column.
+    let isInvisible: Bool
 
     var cardType: NECCardType { NECCardType(cardCode) }
 }
