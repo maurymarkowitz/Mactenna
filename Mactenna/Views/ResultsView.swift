@@ -193,8 +193,9 @@ struct ResultsView: View {
         } else {
             pts = result.radiationPattern
         }
-        // compute max gain from whichever list we're using
-        let gain: Double = pts.map { $0.gain }.max() ?? result.patternMaxGain
+        // compute gain range from whichever list we're using
+        let maxG: Double = pts.map { $0.gain }.max() ?? result.patternMaxGain
+        let minG: Double = pts.map { $0.gain }.min() ?? 0
 
         return ZStack {
             if pts.isEmpty {
@@ -210,8 +211,20 @@ struct ResultsView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                PatternView(points: pts, maxGain: gain)
+                PatternView(points: pts, maxGain: maxG)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+
+            // legend overlay (only when we actually have points)
+            if !pts.isEmpty {
+                VStack {
+                    Spacer()
+                    GainLegend(minGain: minG, maxGain: maxG)
+                        .padding(8)
+                        .background(Color(.windowBackgroundColor).opacity(0.7))
+                        .cornerRadius(6)
+                        .padding(8)
+                }
             }
 
             if isComputingPattern {
@@ -244,6 +257,38 @@ private enum ResultTab: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
     var label: String { rawValue }
+}
+
+// MARK: – Legend view
+
+/// Displays a small gradient bar showing the mapping from gain values to the
+/// colours used in the PatternView.
+private struct GainLegend: View {
+    let minGain: Double
+    let maxGain: Double
+
+    var body: some View {
+        VStack(spacing: 4) {
+            HStack {
+                Text(String(format: "%.1f dBi", minGain))
+                    .font(.caption2)
+                Spacer()
+                Text(String(format: "%.1f dBi", maxGain))
+                    .font(.caption2)
+            }
+            Rectangle()
+                .fill(LinearGradient(
+                    gradient: Gradient(colors: [
+                        PatternView.swiftUIColor(forNorm: 0),
+                        PatternView.swiftUIColor(forNorm: 1)
+                    ]),
+                    startPoint: .leading,
+                    endPoint: .trailing))
+                .frame(height: 8)
+                .cornerRadius(4)
+        }
+        .padding(4)
+    }
 }
 
 // MARK: – MonospaceTextView

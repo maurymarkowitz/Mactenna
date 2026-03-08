@@ -33,13 +33,13 @@ private let columns: [Col] = [
     Col(id: "I2",      title: "I2",      minWidth: 36,  idealWidth: 40,  maxWidth: 80,   alignment: .right),
     Col(id: "I3",      title: "I3",      minWidth: 36,  idealWidth: 40,  maxWidth: 80,   alignment: .right),
     Col(id: "I4",      title: "I4",      minWidth: 36,  idealWidth: 40,  maxWidth: 80,   alignment: .right),
-    Col(id: "F1",      title: "F1",      minWidth: 52,  idealWidth: 52,  maxWidth: 200,  alignment: .right),
-    Col(id: "F2",      title: "F2",      minWidth: 52,  idealWidth: 52,  maxWidth: 200,  alignment: .right),
-    Col(id: "F3",      title: "F3",      minWidth: 52,  idealWidth: 52,  maxWidth: 200,  alignment: .right),
-    Col(id: "F4",      title: "F4",      minWidth: 52,  idealWidth: 52,  maxWidth: 200,  alignment: .right),
-    Col(id: "F5",      title: "F5",      minWidth: 52,  idealWidth: 52,  maxWidth: 200,  alignment: .right),
-    Col(id: "F6",      title: "F6",      minWidth: 52,  idealWidth: 52,  maxWidth: 200,  alignment: .right),
-    Col(id: "F7",      title: "F7",      minWidth: 52,  idealWidth: 52,  maxWidth: 200,  alignment: .right),
+    Col(id: "F1",      title: "F1",      minWidth: 58,  idealWidth: 58,  maxWidth: 200,  alignment: .right),
+    Col(id: "F2",      title: "F2",      minWidth: 58,  idealWidth: 58,  maxWidth: 200,  alignment: .right),
+    Col(id: "F3",      title: "F3",      minWidth: 58,  idealWidth: 58,  maxWidth: 200,  alignment: .right),
+    Col(id: "F4",      title: "F4",      minWidth: 58,  idealWidth: 58,  maxWidth: 200,  alignment: .right),
+    Col(id: "F5",      title: "F5",      minWidth: 58,  idealWidth: 58,  maxWidth: 200,  alignment: .right),
+    Col(id: "F6",      title: "F6",      minWidth: 58,  idealWidth: 58,  maxWidth: 200,  alignment: .right),
+    Col(id: "F7",      title: "F7",      minWidth: 58,  idealWidth: 58,  maxWidth: 200,  alignment: .right),
     // checkbox column: toggles card.ignore state
     Col(id: "ignore",  title: "Ignored", minWidth: 24,  idealWidth: 24,  maxWidth: 30,   alignment: .center),
     // second checkbox column: toggles card.invisible flag
@@ -92,7 +92,15 @@ struct DeckTableView: NSViewRepresentable {
         tableView.allowsMultipleSelection = false
         tableView.rowSizeStyle = .default
         tableView.columnAutoresizingStyle = .noColumnAutoresizing
-
+        // the table itself doesn't have an isEditable flag; editing is
+        // controlled via the delegate’s `tableView(_:shouldEdit:row:)`
+        // implementation (see below).
+        // wire up a double-click action so we can explicitly begin editing
+        // the cell that was clicked.  Some behaviours (especially when views
+        // are borderless) don't reliably provoke the normal text‑editor
+        // start sequence, so we'll trigger it ourselves.
+        tableView.target = context.coordinator
+        tableView.doubleAction = #selector(Coordinator.tableViewDoubleClicked(_:))
         for col in columns {
             let tc = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(col.id))
             tc.title = col.title
@@ -152,7 +160,12 @@ struct DeckTableView: NSViewRepresentable {
         guard let tableView = scrollView.documentView as? NSTableView else { return }
         context.coordinator.deck          = deck
         context.coordinator.onCommitEdit  = onCommitEdit   // keep closure fresh
-        tableView.reloadData()
+        // don't reload while the user is actively editing; doing so will
+        // terminate the editor and make it impossible to type.  `currentEditor`
+        // returns the field editor if one is active.
+        if tableView.currentEditor() == nil {
+            tableView.reloadData()
+        }
 
         // Refresh column headers for the current selection.
         if let idx = selectedIndex, let row = deck.card(at: idx) {
@@ -475,6 +488,7 @@ struct DeckTableView: NSViewRepresentable {
                 cell.isBordered      = false
                 cell.drawsBackground = false
                 cell.focusRingType   = .none
+                cell.isSelectable    = true
                 cell.font            = font(forColumn: colID)
             }
 
@@ -540,6 +554,27 @@ struct DeckTableView: NSViewRepresentable {
         }
 
 
+        // MARK: – Editing support
+
+        /// NSTableViewDelegate hook called when the user tries to start an edit
+        /// (click/double‑click) in a view‑based table.  The default implementation
+        /// returns `false`, so we need to explicitly permit edits on eligible
+        /// cells.
+        func tableView(_ tableView: NSTableView,
+                       shouldEdit tableColumn: NSTableColumn?,
+                       row: Int) -> Bool {
+            guard let colID = tableColumn?.identifier.rawValue,
+                  let deckRow = deck.card(at: row) else {
+                return false
+            }
+            // only the "card" column is never editable; rows marked ignored
+            // are also read‑only.
+            if colID == "card" || deckRow.isIgnored {
+                return false
+            }
+            return true
+        }
+
         func tableViewSelectionDidChange(_ notification: Notification) {
             guard let tv = notification.object as? NSTableView else { return }
             let idx = tv.selectedRow
@@ -549,6 +584,21 @@ struct DeckTableView: NSViewRepresentable {
                 updateColumnHeaders(for: row.cardType)
             } else {
                 updateColumnHeaders(for: .unknown)
+            }
+        }
+
+        // Called when the user double-clicks a row.  Attempt to begin editing
+        // whichever column they clicked, provided the cell is allowed to edit.
+        @objc func tableViewDoubleClicked(_ sender: Any?) {
+            guard let tv = sender as? NSTableView else { return }
+            let col = tv.clickedColumn
+            let row = tv.clickedRow
+            guard col >= 0, row >= 0,
+                  let colID = tv.tableColumns[col].identifier.rawValue as String?,
+                  let deckRow = deck.card(at: row) else { return }
+            // only allow editing if our delegate would allow it
+            if colID != "card" && !deckRow.isIgnored {
+                tv.editColumn(col, row: row, with: nil, select: true)
             }
         }
 

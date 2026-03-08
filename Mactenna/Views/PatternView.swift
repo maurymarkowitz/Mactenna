@@ -16,6 +16,20 @@ struct PatternView: NSViewRepresentable {
     let points: [SimulationResult.RadiationPoint]
     let maxGain: Double  // used to normalise radius
 
+    // MARK: – colour helpers
+
+    /// Returns the colour used for a normalized gain value (0…1) when rendering
+    /// the mesh in SceneKit.
+    static func nsColor(forNorm norm: Double) -> NSColor {
+        let hue = CGFloat(0.66 - 0.66 * norm) // blue->red
+        return NSColor(calibratedHue: hue, saturation: 1, brightness: 1, alpha: 1)
+    }
+
+    /// SwiftUI equivalent of `nsColor(forNorm:)`.  Used for the legend view.
+    static func swiftUIColor(forNorm norm: Double) -> Color {
+        Color(nsColor(forNorm: norm))
+    }
+
     func makeNSView(context: Context) -> SCNView {
         let scnView = SCNView()
         scnView.scene = makeScene()
@@ -39,11 +53,30 @@ struct PatternView: NSViewRepresentable {
         cameraNode.position = SCNVector3(x: 0, y: 0, z: 5)
         scene.rootNode.addChildNode(cameraNode)
 
-        // axes helper
+        // axes helper – extend by 50% (1 → 1.5) and add labels
         let axis = SCNNode()
-        axis.addChildNode(lineNode(from: SCNVector3Zero, to: SCNVector3(1,0,0), color: .red))
-        axis.addChildNode(lineNode(from: SCNVector3Zero, to: SCNVector3(0,1,0), color: .green))
-        axis.addChildNode(lineNode(from: SCNVector3Zero, to: SCNVector3(0,0,1), color: .blue))
+        let axisLength: Float = 1.5
+        axis.addChildNode(lineNode(from: SCNVector3Zero, to: SCNVector3(axisLength,0,0), color: .red))
+        axis.addChildNode(lineNode(from: SCNVector3Zero, to: SCNVector3(0,axisLength,0), color: .green))
+        axis.addChildNode(lineNode(from: SCNVector3Zero, to: SCNVector3(0,0,axisLength), color: .blue))
+
+        func labelNode(_ text: String, color: NSColor, position: SCNVector3) -> SCNNode {
+            let txt = SCNText(string: text, extrusionDepth: 0.1)
+            txt.font = NSFont.systemFont(ofSize: 0.4)  // twice as large
+            txt.firstMaterial?.diffuse.contents = color
+            let node = SCNNode(geometry: txt)
+            // centre the text around its origin
+            let (min, max) = txt.boundingBox
+            let dx = (max.x + min.x) / 2
+            let dy = (max.y + min.y) / 2
+            node.pivot = SCNMatrix4MakeTranslation(dx, dy, 0)
+            node.scale = SCNVector3(0.4, 0.4, 0.4)     // match the font size increase
+            node.position = position
+            return node
+        }
+        axis.addChildNode(labelNode("X", color: .red,   position: SCNVector3(axisLength,0,0)))
+        axis.addChildNode(labelNode("Y", color: .green, position: SCNVector3(0,axisLength,0)))
+        axis.addChildNode(labelNode("Z", color: .blue,  position: SCNVector3(0,0,axisLength)))
         scene.rootNode.addChildNode(axis)
 
         // build a continuous mesh from the pattern points
@@ -162,6 +195,9 @@ struct PatternView: NSViewRepresentable {
             let mat = SCNMaterial()
             mat.lightingModel = .constant   // unlit: display vertex colors exactly
             mat.isDoubleSided = true
+            mat.transparency = 0.5          // render the pattern half‑transparent
+            // ensure we blend using alpha so overlapping parts are visible
+            mat.transparencyMode = .aOne
             geom.firstMaterial = mat
             let meshNode = SCNNode(geometry: geom)
             scene.rootNode.addChildNode(meshNode)
@@ -200,8 +236,28 @@ extension PatternView {
 
     struct Preview: PreviewProvider {
         static var previews: some View {
-            PatternView(points: PreviewData.sample, maxGain: 2.0)
-                .frame(width: 300, height: 300)
+            VStack(spacing: 8) {
+                PatternView(points: PreviewData.sample, maxGain: 2.0)
+                    .frame(width: 300, height: 300)
+                // simple legend for preview
+                HStack {
+                    Text("0.0 dBi")
+                        .font(.caption2)
+                    Rectangle()
+                        .fill(LinearGradient(
+                            gradient: Gradient(colors: [
+                                PatternView.swiftUIColor(forNorm: 0),
+                                PatternView.swiftUIColor(forNorm: 1)
+                            ]),
+                            startPoint: .leading,
+                            endPoint: .trailing))
+                        .frame(height: 8)
+                        .cornerRadius(4)
+                    Text("2.0 dBi")
+                        .font(.caption2)
+                }
+                .padding(.horizontal)
+            }
         }
     }
 }
