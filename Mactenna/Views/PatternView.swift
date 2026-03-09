@@ -240,7 +240,7 @@ struct PatternView: NSViewRepresentable {
             let mat = SCNMaterial()
             mat.lightingModel = .constant   // unlit: display vertex colors exactly
             mat.isDoubleSided = true
-            mat.transparency = 0.5          // render the pattern half‑transparent
+            mat.transparency = 1.0          // opaque pattern mesh
             // ensure we blend using alpha so overlapping parts are visible
             mat.transparencyMode = .aOne
             geom.firstMaterial = mat
@@ -300,7 +300,22 @@ struct PatternView: NSViewRepresentable {
 
 #if DEBUG
 
+// helper for previews that need a @State binding
+// from https://www.hackingwithswift.com/quick-start/swiftui/how-to-create-a-state-binding-for-a-preview
+// (simplified generic implementation)
+struct StatefulPreviewWrapper<Value, Content: View>: View {
+    @State private var value: Value
+    let content: (Binding<Value>) -> Content
 
+    init(_ value: Value, @ViewBuilder content: @escaping (Binding<Value>) -> Content) {
+        self._value = State(initialValue: value)
+        self.content = content
+    }
+
+    var body: some View {
+        content($value)
+    }
+}
 
 extension PatternView {
     struct PreviewData {
@@ -317,9 +332,13 @@ extension PatternView {
     struct Preview: PreviewProvider {
         static var previews: some View {
             VStack(spacing: 8) {
+                // PatternView no longer needs a selection binding; the
+                // geometry view handles interaction now.  Keep the preview
+                // simple without the helper wrapper.
                 PatternView(points: PreviewData.sample,
                             maxGain: 2.0)
                     .frame(width: 300, height: 300)
+            }
                 // simple legend for preview
                 HStack {
                     Text("0.0 dBi")
@@ -341,5 +360,4 @@ extension PatternView {
             }
         }
     }
-}
 #endif

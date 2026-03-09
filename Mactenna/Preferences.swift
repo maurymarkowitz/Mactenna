@@ -44,7 +44,7 @@ final class Preferences: ObservableObject {
     @AppStorage("patternAutoRun") var patternAutoRun: Bool = true
 
     // MARK: – Geometry display
-    @AppStorage("geometryExaggerateSmallDiameters") var geometryExaggerateSmallDiameters: Bool = false
+    @AppStorage("geometryExaggerateSmallDiameters") var geometryExaggerateSmallDiameters: Bool = true // default to on as per user request
     @AppStorage("geometryRadiusScale") var geometryRadiusScale: Double = 5.0
 
     // MARK: – Deck table
