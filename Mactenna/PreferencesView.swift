@@ -37,6 +37,7 @@ struct PreferencesView: View {
         Form {
             Section(header: Text("Deck Editor")) {
                 Toggle("Show ignored cards by default", isOn: $prefs.deckShowIgnoredByDefault)
+                Toggle("Show section labels in table", isOn: $prefs.deckShowSectionLabels)
                 TextField("Column order", text: $prefs.deckDefaultColumnOrder)
                     .textFieldStyle(.roundedBorder)
             }

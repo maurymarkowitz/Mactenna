@@ -47,6 +47,9 @@ final class Preferences: ObservableObject {
     @AppStorage("geometryExaggerateSmallDiameters") var geometryExaggerateSmallDiameters: Bool = false
     @AppStorage("geometryRadiusScale") var geometryRadiusScale: Double = 5.0
 
+    // MARK: – Deck table
+    @AppStorage("deckShowSectionLabels") var deckShowSectionLabels: Bool = true
+
     // MARK: – External engine
     @AppStorage("externalEnginePath") var externalEnginePath: String = ""
     @AppStorage("externalEngineArgs") var externalEngineArgs: String = ""

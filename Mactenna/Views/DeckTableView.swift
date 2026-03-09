@@ -153,6 +153,39 @@ struct DeckTableView: NSViewRepresentable {
         scroll.autohidesScrollers = true
         scroll.borderType = .noBorder
 
+        // add overlay labels for sections (may be disabled by pref)
+        let showLabels = Preferences.shared.deckShowSectionLabels
+        let labels: [NSTextField] = ["Comments", "Symbols", "Geometry", "Control"].map { title in
+            let lbl = NSTextField(labelWithString: title)
+            lbl.font = NSFont.systemFont(ofSize: 11, weight: .semibold)
+            lbl.textColor = .secondaryLabelColor
+            lbl.backgroundColor = .clear
+            lbl.isBordered = false
+            lbl.isEditable = false
+            lbl.isSelectable = false
+            lbl.alignment = .left
+            lbl.isHidden = !showLabels
+            scroll.addSubview(lbl)
+            return lbl
+        }
+        context.coordinator.sectionLabels = labels
+        // listen for scrolling or resizing to reposition labels
+        scroll.contentView.postsBoundsChangedNotifications = true
+        scroll.contentView.postsFrameChangedNotifications = true
+        NotificationCenter.default.addObserver(context.coordinator,
+                                               selector: #selector(Coordinator.scrollViewDidScroll(_:)),
+                                               name: NSView.boundsDidChangeNotification,
+                                               object: scroll.contentView)
+        NotificationCenter.default.addObserver(context.coordinator,
+                                               selector: #selector(Coordinator.scrollViewDidScroll(_:)),
+                                               name: NSView.frameDidChangeNotification,
+                                               object: scroll.contentView)
+        // also watch for live scrolling (wheel or trackpad) to ensure labels track
+        NotificationCenter.default.addObserver(context.coordinator,
+                                               selector: #selector(Coordinator.scrollViewDidScroll(_:)),
+                                               name: NSScrollView.didLiveScrollNotification,
+                                               object: scroll)
+
         return scroll
     }
 
@@ -183,6 +216,9 @@ struct DeckTableView: NSViewRepresentable {
         } else {
             tableView.deselectAll(nil)
         }
+
+        // ensure labels are positioned initially or after updates
+        context.coordinator.repositionSectionLabels()
     }
 
     // MARK: – Coordinator
@@ -210,6 +246,8 @@ struct DeckTableView: NSViewRepresentable {
         var selectedIndex: Binding<Int?>
         var onCommitEdit: (Int, String, String) -> Void
         weak var tableView: NSTableView?
+        // labels overlayed in the scrollview
+        var sectionLabels: [NSTextField] = []
 
         init(deck: NECDeck,
              selectedIndex: Binding<Int?>,
@@ -615,6 +653,54 @@ struct DeckTableView: NSViewRepresentable {
                 rv.hasThickBottom = true
             }
             return rv
+        }
+
+        @objc func scrollViewDidScroll(_ note: Notification) {
+            repositionSectionLabels()
+        }
+
+        func repositionSectionLabels() {
+            guard let tv = tableView, let scroll = tv.enclosingScrollView else { return }
+            let visRect = scroll.contentView.bounds
+            // compute start rows for each section if present
+            let sections: [(String, Int?)] = [
+                ("Comments", deck.commentSectionEnd.map { _ in 0 }),
+                // symbols start at symbolSectionEnd - there is no separate start
+                ("Symbols", deck.symbolSectionEnd.flatMap { end in
+                    end > (deck.commentSectionEnd ?? -1) ? end : nil
+                }),
+                // geometry label at section start if available
+                ("Geometry", deck.geometrySectionStart),
+                ("Control", deck.geometrySectionEnd.flatMap { end in
+                    end + 1 < deck.cardCount ? end + 1 : nil
+                })
+            ]
+            guard Preferences.shared.deckShowSectionLabels else {
+                // hide all if pref disabled
+                sectionLabels.forEach { $0.isHidden = true }
+                return
+            }
+            for (idx, (_, optRow)) in sections.enumerated() {
+                let lbl = sectionLabels[idx]
+                if let row = optRow {
+                    lbl.isHidden = false
+                    // convert row rect into contentView coordinates (accounts for scrolling)
+                    var rowRect = tv.rect(ofRow: row)
+                    let rowInContent = tv.convert(rowRect, to: scroll.contentView)
+                    let contentOrigin = scroll.contentView.bounds.origin
+                    // compute y relative to visible area, clamp at header bottom
+                    let headerHeight = tv.headerView?.frame.height ?? 0
+                    let y = max(rowInContent.minY - contentOrigin.y, headerHeight)
+                    // shift left with a larger margin to avoid clipping
+                    let margin: CGFloat = 16
+                    // ensure label has correct size first
+                    lbl.sizeToFit()
+                    let x = visRect.maxX - lbl.frame.width - margin
+                    lbl.frame = CGRect(x: x, y: y, width: lbl.frame.width, height: lbl.frame.height)
+                } else {
+                    lbl.isHidden = true
+                }
+            }
         }
 
         // Called when the user double-clicks a row.  Attempt to begin editing

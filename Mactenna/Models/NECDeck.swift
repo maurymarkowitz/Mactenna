@@ -367,6 +367,13 @@ final class NECDeck: ObservableObject {
         return end >= 0 ? end : nil
     }
 
+    /// First row in the geometry section (where geometry cards begin).
+    var geometrySectionStart: Int? {
+        guard let dp = deckPtr else { return nil }
+        let start = Int(dp.pointee.geometry_start)
+        return start >= 0 ? start : nil
+    }
+
     /// Last row in the geometry section.
     var geometrySectionEnd: Int? {
         guard let dp = deckPtr else { return nil }
