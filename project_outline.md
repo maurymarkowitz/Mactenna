@@ -135,7 +135,7 @@
 - [x] Color mapping and legend
 
 ### Phase 5 — 3D Geometry Viewer
-- [ ] Phase 1: geometry from OpenNEC segmented data
+- [x] Phase 1: geometry from OpenNEC segmented data (overlay shown with pattern)
 - [ ] Phase 2: native deck-to-geometry renderer (no segmentation)
 - [ ] Real-time geometry preview during editing
 

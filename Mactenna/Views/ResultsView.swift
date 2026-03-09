@@ -155,7 +155,13 @@ struct ResultsView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                PatternView(points: pts, maxGain: maxG)
+                let geomSegments: [PatternView.GeometrySegment] =
+                    deck.geometrySegments().map { seg in
+                        PatternView.GeometrySegment(start: seg.start,
+                                                    end: seg.end)
+                    }
+                PatternView(points: pts, maxGain: maxG,
+                            geometry: geomSegments)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
 

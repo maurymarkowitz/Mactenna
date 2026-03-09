@@ -787,6 +787,40 @@ final class NECDeck: ObservableObject {
 
     // MARK: – Simulation (Phase 3)
 
+    // MARK: – Geometry extraction (Phase 5)
+    /// Simple wire segment representation for the geometry viewer.
+    struct GeometrySegment {
+        let start: SIMD3<Float>
+        let end:   SIMD3<Float>
+    }
+
+    /// Returns an array of geometry segments derived from the most recent
+    /// solved context.  Segments belonging to ignored or invisible cards are
+    /// omitted.
+    func geometrySegments() -> [GeometrySegment] {
+        guard let ctx = solvedCtx, let deckPtr = deckPtr else { return [] }
+        let n = nec_geometry_num_segs(ctx)
+        var segs: [GeometrySegment] = []
+        segs.reserveCapacity(Int(n))
+        for i in 0..<n {
+            let cardnum = nec_geometry_seg_cardnum(ctx, i)
+            let cardIndex = cardnum > 0 ? cardnum - 1 : -1
+            if cardIndex >= 0, let row = card(at: Int(cardIndex)) {
+                if row.isIgnored || row.isInvisible {
+                    continue
+                }
+            }
+            let x1 = Float(nec_geometry_seg_x1(ctx, i))
+            let y1 = Float(nec_geometry_seg_y1(ctx, i))
+            let z1 = Float(nec_geometry_seg_z1(ctx, i))
+            let x2 = Float(nec_geometry_seg_x2(ctx, i))
+            let y2 = Float(nec_geometry_seg_y2(ctx, i))
+            let z2 = Float(nec_geometry_seg_z2(ctx, i))
+            segs.append(.init(start: SIMD3(x1,y1,z1), end: SIMD3(x2,y2,z2)))
+        }
+        return segs
+    }
+
     /// Compute a full‑sphere radiation pattern using existing geometry and
     /// currents when available (no text serialisation or file I/O).
     ///

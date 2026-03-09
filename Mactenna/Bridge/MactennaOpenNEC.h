@@ -185,6 +185,42 @@ static inline const char *nec_result_error_msg(const nec_context_t *ctx, int i)
 }
 
 // ---------------------------------------------------------------------------
+// Geometry access helpers for Phase 5 viewer
+// ---------------------------------------------------------------------------
+static inline int nec_geometry_num_segs(const nec_context_t *ctx)
+{
+    return ctx ? ctx->geometry.num_segs : 0;
+}
+static inline int nec_geometry_seg_cardnum(const nec_context_t *ctx, int i)
+{
+    return (ctx && ctx->geometry.card_nums) ? ctx->geometry.card_nums[i] : 0;
+}
+static inline double nec_geometry_seg_x1(const nec_context_t *ctx, int i)
+{
+    return (ctx && ctx->geometry.end1_x) ? ctx->geometry.end1_x[i] : 0.0;
+}
+static inline double nec_geometry_seg_y1(const nec_context_t *ctx, int i)
+{
+    return (ctx && ctx->geometry.end1_y) ? ctx->geometry.end1_y[i] : 0.0;
+}
+static inline double nec_geometry_seg_z1(const nec_context_t *ctx, int i)
+{
+    return (ctx && ctx->geometry.end1_z) ? ctx->geometry.end1_z[i] : 0.0;
+}
+static inline double nec_geometry_seg_x2(const nec_context_t *ctx, int i)
+{
+    return (ctx && ctx->geometry.end2_x) ? ctx->geometry.end2_x[i] : 0.0;
+}
+static inline double nec_geometry_seg_y2(const nec_context_t *ctx, int i)
+{
+    return (ctx && ctx->geometry.end2_y) ? ctx->geometry.end2_y[i] : 0.0;
+}
+static inline double nec_geometry_seg_z2(const nec_context_t *ctx, int i)
+{
+    return (ctx && ctx->geometry.end2_z) ? ctx->geometry.end2_z[i] : 0.0;
+}
+
+// ---------------------------------------------------------------------------
 // Full-sphere pattern computation helper
 //
 // Configures ctx->fpat for a complete sphere at `step_deg` angular resolution,
