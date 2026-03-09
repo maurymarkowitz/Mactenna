@@ -187,6 +187,23 @@ struct DeckTableView: NSViewRepresentable {
 
     // MARK: – Coordinator
 
+    class SectionRowView: NSTableRowView {
+        var hasThickBottom: Bool = false
+        override func drawBackground(in dirtyRect: NSRect) {
+            super.drawBackground(in: dirtyRect)
+            if hasThickBottom {
+                // draw line along bottom edge instead of top
+                let y = bounds.height - 1
+                let line = NSBezierPath()
+                line.move(to: NSPoint(x: 0, y: y))
+                line.line(to: NSPoint(x: bounds.width, y: y))
+                NSColor.separatorColor.setStroke()
+                line.lineWidth = 3  // slightly thicker
+                line.stroke()
+            }
+        }
+    }
+
     class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate, NSTextFieldDelegate {
 
         var deck: NECDeck
@@ -585,6 +602,19 @@ struct DeckTableView: NSViewRepresentable {
             } else {
                 updateColumnHeaders(for: .unknown)
             }
+        }
+
+        // provide custom row views so we can draw thicker separators
+        func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
+            let rv = SectionRowView()
+            if let end = deck.commentSectionEnd, row == end {
+                rv.hasThickBottom = true
+            } else if let end = deck.symbolSectionEnd, row == end {
+                rv.hasThickBottom = true
+            } else if let end = deck.geometrySectionEnd, row == end {
+                rv.hasThickBottom = true
+            }
+            return rv
         }
 
         // Called when the user double-clicks a row.  Attempt to begin editing

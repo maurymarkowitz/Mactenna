@@ -353,6 +353,27 @@ final class NECDeck: ObservableObject {
         return end >= 0 && row <= end
     }
 
+    /// End index of the comment-header section, or nil if unknown.
+    var commentSectionEnd: Int? {
+        guard let dp = deckPtr else { return nil }
+        let end = Int(dp.pointee.comment_end)
+        return end >= 0 ? end : nil
+    }
+
+    /// Last row in the symbol (SY) section, if available.
+    var symbolSectionEnd: Int? {
+        guard let dp = deckPtr else { return nil }
+        let end = Int(dp.pointee.symbol_end)
+        return end >= 0 ? end : nil
+    }
+
+    /// Last row in the geometry section.
+    var geometrySectionEnd: Int? {
+        guard let dp = deckPtr else { return nil }
+        let end = Int(dp.pointee.geometry_end)
+        return end >= 0 ? end : nil
+    }
+
     /// Returns true if `row` is in the geometry or symbol section.
     /// Changes here require recalculating geometry and currents.
     private func isInGeometrySection(_ row: Int) -> Bool {
