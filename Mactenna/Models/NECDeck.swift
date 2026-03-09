@@ -136,6 +136,9 @@ final class NECDeck: ObservableObject {
         }
 
         cardCount = Int(deckPtr?.pointee.num_cards ?? 0)
+        // after loading a deck we may be able to estimate the run time; if it
+        // is small enough, trigger an initial simulation automatically.
+        autoRecalcIfAppropriate()
     }
 
     // MARK: – Serialise
@@ -405,6 +408,7 @@ final class NECDeck: ObservableObject {
         invalidate(forEditAt: row)
         editGeneration &+= 1
         objectWillChange.send()
+        autoRecalcIfAppropriate()
     }
 
     /// Write a floating-point value into card_t.f[field] (1-based).
@@ -426,6 +430,7 @@ final class NECDeck: ObservableObject {
         invalidate(forEditAt: row)
         editGeneration &+= 1
         objectWillChange.send()
+        autoRecalcIfAppropriate()
     }
 
     /// Replace the comment field of a card (any card, including CM/CE).
@@ -468,6 +473,7 @@ final class NECDeck: ObservableObject {
         currentsAreStale = true
         editGeneration &+= 1
         objectWillChange.send()
+        autoRecalcIfAppropriate()
     }
 
     // MARK: – Structural edits via C API (Phase 2)
@@ -504,6 +510,7 @@ final class NECDeck: ObservableObject {
         cardCount = Int(deckPtr.pointee.num_cards)
         editGeneration &+= 1
         objectWillChange.send()
+        autoRecalcIfAppropriate()
         return snapshot
     }
 
@@ -523,6 +530,7 @@ final class NECDeck: ObservableObject {
         cardCount = Int(deckPtr.pointee.num_cards)
         editGeneration &+= 1
         objectWillChange.send()
+        autoRecalcIfAppropriate()
         return snapshot
     }
 
@@ -594,6 +602,7 @@ final class NECDeck: ObservableObject {
         cardCount = Int(deckPtr.pointee.num_cards)
         editGeneration &+= 1
         objectWillChange.send()
+        autoRecalcIfAppropriate()
     }
 
     /// Mark or unmark a card as ignored (commented-out).
@@ -634,6 +643,7 @@ final class NECDeck: ObservableObject {
         invalidate(forEditAt: row)
         editGeneration &+= 1
         objectWillChange.send()
+        autoRecalcIfAppropriate()
     }
 
     /// Toggle the `invisible` flag on a card.  Unlike `setIgnored`, this has
@@ -871,14 +881,26 @@ final class NECDeck: ObservableObject {
     /// directly — no write_deck_onec / file I/O round-trip.
     /// isRunning guards all mutation methods above, so the deck is stable
     /// for the duration of the background run.
+    /// Estimate the expected runtime using the OpenNEC helper and, if it is
+    /// below the 10^9 threshold requested by the user, kick off a simulation
+    /// immediately.  This is invoked after any change which could affect the
+    /// calculation and also on initial deck load.
+    private func autoRecalcIfAppropriate() {
+        guard !isRunning, let ctx = ctx, let deckPtr = deckPtr else { return }
+        guard Preferences.shared.simAutoRecalcEnabled else { return }
+        let T = nec_estimate_time(ctx, deckPtr)
+        let threshold = Preferences.shared.simAutoRecalcThreshold
+        if T < threshold {
+            runSimulation()
+        }
+    }
+
     func runSimulation() {
         guard !isRunning else { return }
         guard let deckPtr else { return }
 
         isRunning = true
         simulationResult = nil
-
-        // Retain a LogCapture object; the C callback uses it via raw pointer.
         let capture = LogCapture()
         let rawCapture = Unmanaged.passRetained(capture).toOpaque()
 

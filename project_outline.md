@@ -129,10 +129,10 @@
 - [x] Begin Phase 4 work: add SceneKit-based view scaffold (PatternView.swift)
 - [x] Allow viewer to compute full‑sphere pattern on demand (5° steps) without
       modifying deck RP cards
-- [ ] Parse RP output data (radiation pattern tables in outputText)
-- [ ] Build 3D pattern mesh from theta/phi/gain values
-- [ ] Interactive SceneKit view
-- [ ] Color mapping and legend
+- [x] Parse RP output data (radiation pattern tables in outputText or context)
+- [x] Build 3D pattern mesh from theta/phi/gain values
+- [x] Interactive SceneKit view
+- [x] Color mapping and legend
 
 ### Phase 5 — 3D Geometry Viewer
 - [ ] Phase 1: geometry from OpenNEC segmented data
@@ -145,6 +145,27 @@
 - [ ] Toolbar customization
 - [ ] Accessibility
 - [ ] Help documentation
+
+### Phase 7 — Integrate other engines
+- [ ] Export current deck to a temporary file
+- [ ] Invoke external NEC engine (e.g. `nec2c`) with that file
+- [ ] Read and parse resulting `.out` output into SimulationResult
+- [ ] Fall back to direct OneC calls when external engine unavailable
+
+(Useful for supporting alternate solver binaries in future; not
+required while OneC is called directly.)
+
+### Phase 8 — Preferences panel
+- [x] Create central preferences UI (e.g. `Settings` window / sidebar)
+- [x] Add generic framework for registering per-phase preferences
+- [x] Phase‑1 settings: deck‑editing defaults (column order, visibility) and auto‑recalc toggle/threshold
+- [ ] Phase‑2 settings: simulation options, default step size
+- [ ] Phase‑3 settings: log verbosity, output formatting preferences
+- [ ] Phase‑4 settings: pattern colour map, default view angle, auto‑run
+- [ ] Phase‑7 settings: external engine path and command‑line flags
+
+(Preferences panel will evolve as each phase introduces new tunables; this
+section may remain a checklist of ongoing work rather than a single milestone.)
 
 ---
 

@@ -56,9 +56,10 @@ struct ResultsView: View {
 
     /// Kick off a full-sphere pattern run if we haven’t already done so.
     private func startPatternComputationIfNeeded() {
+        guard Preferences.shared.patternAutoRun else { return }
         guard fullPatternPoints.isEmpty, !isComputingPattern else { return }
         isComputingPattern = true
-        deck.computeFullPattern(stepDegrees: 5.0) { pts in
+        deck.computeFullPattern(stepDegrees: Preferences.shared.simDefaultStepDegrees) { pts in
             self.fullPatternPoints = pts
             self.isComputingPattern = false
         }

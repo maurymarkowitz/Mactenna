@@ -20,6 +20,9 @@ struct MactennaApp: App {
         DocumentGroup(newDocument: MactennaDocument()) { file in
             ContentView(document: file.$document)
         }
+        Settings {
+            PreferencesView()
+        }
         .commands {
             // ── File menu additions ────────────────────────────────────────
             CommandGroup(after: .saveItem) {

@@ -106,6 +106,10 @@ static inline double nec_result_power_net_loss(const nec_context_t *ctx)
     return ctx->netcx.power_net_loss;
 }
 
+// declaration for time estimation helper (added per user request)
+// The real definition lives in misc.c; we only need a prototype here.
+extern double nec_estimate_time(nec_context_t *ctx, deck_t *deck);
+
 // radiation pattern summary
 static inline int nec_result_rpat_npoints(const nec_context_t *ctx)
 {
