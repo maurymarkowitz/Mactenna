@@ -24,6 +24,8 @@ struct PreferencesView: View {
                 .tabItem { Label("Simulation", systemImage: "play.circle") }
             patternTab
                 .tabItem { Label("Pattern", systemImage: "waveform.path") }
+            geometryPrefsTab
+                .tabItem { Label("Geometry", systemImage: "cube") }
             advancedTab
                 .tabItem { Label("Advanced", systemImage: "hammer") }
         }
@@ -77,6 +79,28 @@ struct PreferencesView: View {
                 }
                 .pickerStyle(.segmented)
                 Toggle("Auto‑run pattern on change", isOn: $prefs.patternAutoRun)
+            }
+        }
+        .padding()
+    }
+
+    private var geometryPrefsTab: some View {
+        Form {
+            Section(header: Text("Geometry view")) {
+                Toggle("Exaggerate small diameters",
+                       isOn: $prefs.geometryExaggerateSmallDiameters)
+                HStack {
+                    Text("Base radius scale")
+                    Slider(value: $prefs.geometryRadiusScale,
+                           in: 1...10,
+                           step: 0.5)
+                    Text(String(format: "%.1fx", prefs.geometryRadiusScale))
+                        .frame(width: 50)
+                }
+                Text("If an element's diameter is \u{003c}1% of its length, show it 5× thicker")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding()

@@ -792,6 +792,7 @@ final class NECDeck: ObservableObject {
     struct GeometrySegment {
         let start: SIMD3<Float>
         let end:   SIMD3<Float>
+        let cardIndex: Int   // 0-based row index for cross-selection
     }
 
     /// Returns an array of geometry segments derived from the most recent
@@ -816,7 +817,9 @@ final class NECDeck: ObservableObject {
             let x2 = Float(nec_geometry_seg_x2(ctx, i))
             let y2 = Float(nec_geometry_seg_y2(ctx, i))
             let z2 = Float(nec_geometry_seg_z2(ctx, i))
-            segs.append(.init(start: SIMD3(x1,y1,z1), end: SIMD3(x2,y2,z2)))
+            segs.append(.init(start: SIMD3(x1,y1,z1),
+                               end: SIMD3(x2,y2,z2),
+                              cardIndex: Int(cardIndex)))
         }
         return segs
     }

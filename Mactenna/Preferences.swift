@@ -43,6 +43,10 @@ final class Preferences: ObservableObject {
     @AppStorage("patternColorMap") var patternColorMap: String = "default" // placeholder
     @AppStorage("patternAutoRun") var patternAutoRun: Bool = true
 
+    // MARK: – Geometry display
+    @AppStorage("geometryExaggerateSmallDiameters") var geometryExaggerateSmallDiameters: Bool = false
+    @AppStorage("geometryRadiusScale") var geometryRadiusScale: Double = 5.0
+
     // MARK: – External engine
     @AppStorage("externalEnginePath") var externalEnginePath: String = ""
     @AppStorage("externalEngineArgs") var externalEngineArgs: String = ""

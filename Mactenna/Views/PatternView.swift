@@ -41,13 +41,21 @@ fileprivate final class ZoomableSCNView: SCNView {
     }
 }
 
+// simple segment representation shared by view and deck model
+struct GeometrySegment {
+    let start: SIMD3<Float>
+    let end:   SIMD3<Float>
+    let cardIndex: Int
+}
+
 struct PatternView: NSViewRepresentable {
     /// Radiation pattern points to display.  Coordinates are in degrees and
     /// gain is in dBi.  All values are provided by SimulationResult.
     let points: [SimulationResult.RadiationPoint]
     let maxGain: Double  // used to normalise radius
-    /// Geometry segments to overlay on the pattern.
-    let geometry: [GeometrySegment]
+
+    // NOTE: selection and interaction moved to GeometryView; this view is
+    // now strictly for rendering the pattern mesh (with overlaid geometry).
 
     // MARK: – colour helpers
 
@@ -237,21 +245,14 @@ struct PatternView: NSViewRepresentable {
             mat.transparencyMode = .aOne
             geom.firstMaterial = mat
             let meshNode = SCNNode(geometry: geom)
+        // avoid interfering with hit-testing; pattern mesh belongs to mask 1
+        meshNode.categoryBitMask = 1
 
-            // compute bounding boxes for geometry and pattern separately
+            // compute bounding box of the pattern mesh itself so we can
+            // centre it in the scene.  We do not scale to any external
+            // geometry – that responsibility now lies with the separate
+            // GeometryView.
             let (patternMin, patternMax) = geom.boundingBox
-            // compute geometry bounds from segment list
-            var geoMin = SCNVector3(CGFloat.infinity, CGFloat.infinity, CGFloat.infinity)
-            var geoMax = SCNVector3(-CGFloat.infinity, -CGFloat.infinity, -CGFloat.infinity)
-            for seg in geometry {
-                let pts = [seg.start, seg.end]
-                for p in pts {
-                    let gx = CGFloat(p.x), gy = CGFloat(p.y), gz = CGFloat(p.z)
-                    geoMin.x = min(geoMin.x, gx); geoMin.y = min(geoMin.y, gy); geoMin.z = min(geoMin.z, gz)
-                    geoMax.x = max(geoMax.x, gx); geoMax.y = max(geoMax.y, gy); geoMax.z = max(geoMax.z, gz)
-                }
-            }
-            // compute radii relative to respective centers
             let patCenter = SCNVector3((patternMin.x+patternMax.x)/2,
                                        (patternMin.y+patternMax.y)/2,
                                        (patternMin.z+patternMax.z)/2)
@@ -265,54 +266,14 @@ struct PatternView: NSViewRepresentable {
                 }.max() ?? 0
             }
             let patRadius = radius(from: patternMin, to: patternMax, center: patCenter)
-            var geoRadius: CGFloat = 0
-            if geoMin.x < geoMax.x { // means we actually have geometry
-                let geoCenter = SCNVector3((geoMin.x+geoMax.x)/2,
-                                           (geoMin.y+geoMax.y)/2,
-                                           (geoMin.z+geoMax.z)/2)
-                geoRadius = radius(from: geoMin, to: geoMax, center: geoCenter)
-            }
-            // scale pattern so geometry sits inside it
-            if patRadius > 0 && geoRadius > 0 {
-                let scale = (geoRadius * 1.1) / patRadius
-                meshNode.scale = SCNVector3(scale, scale, scale)
-            }
+            // no external scaling for now
 
-            // recompute combined bounds after scaling pattern
-            var minB = SCNVector3(patternMin.x * meshNode.scale.x,
-                                   patternMin.y * meshNode.scale.y,
-                                   patternMin.z * meshNode.scale.z)
-            var maxB = SCNVector3(patternMax.x * meshNode.scale.x,
-                                   patternMax.y * meshNode.scale.y,
-                                   patternMax.z * meshNode.scale.z)
-            for seg in geometry {
-                let sx1 = CGFloat(seg.start.x)
-                let sy1 = CGFloat(seg.start.y)
-                let sz1 = CGFloat(seg.start.z)
-                let sx2 = CGFloat(seg.end.x)
-                let sy2 = CGFloat(seg.end.y)
-                let sz2 = CGFloat(seg.end.z)
-                minB.x = min(minB.x, sx1, sx2)
-                minB.y = min(minB.y, sy1, sy2)
-                minB.z = min(minB.z, sz1, sz2)
-                maxB.x = max(maxB.x, sx1, sx2)
-                maxB.y = max(maxB.y, sy1, sy2)
-                maxB.z = max(maxB.z, sz1, sz2)
-            }
-            // create container and position children relative to its center
+            // create container and position children relative to its centre
             let container = SCNNode()
             container.addChildNode(meshNode)
-            for seg in geometry {
-                let p1 = SCNVector3(CGFloat(seg.start.x), CGFloat(seg.start.y), CGFloat(seg.start.z))
-                let p2 = SCNVector3(CGFloat(seg.end.x),   CGFloat(seg.end.y),   CGFloat(seg.end.z))
-                let geoLine = lineNode(from: p1,
-                                       to: p2,
-                                       color: NSColor.darkGray)
-                container.addChildNode(geoLine)
-            }
-            let cx = (minB.x + maxB.x) / 2
-            let cy = (minB.y + maxB.y) / 2
-            let cz = (minB.z + maxB.z) / 2
+            let cx = (patternMin.x + patternMax.x) / 2
+            let cy = (patternMin.y + patternMax.y) / 2
+            let cz = (patternMin.z + patternMax.z) / 2
             container.position = SCNVector3(-cx, -cy, -cz)
             scene.rootNode.addChildNode(container)
         }
@@ -338,12 +299,10 @@ struct PatternView: NSViewRepresentable {
 }
 
 #if DEBUG
-extension PatternView {
-    struct GeometrySegment {
-        let start: SIMD3<Float>
-        let end:   SIMD3<Float>
-    }
 
+
+
+extension PatternView {
     struct PreviewData {
         static let sample: [SimulationResult.RadiationPoint] = (0..<36).flatMap { ti in
             (0..<72).map { pj in
@@ -353,16 +312,13 @@ extension PatternView {
                 return SimulationResult.RadiationPoint(theta: theta, phi: phi, gain: gain)
             }
         }
-        static let geom: [GeometrySegment] = [
-            GeometrySegment(start: SIMD3(-1,0,0), end: SIMD3(1,0,0)),
-            GeometrySegment(start: SIMD3(0,-1,0), end: SIMD3(0,1,0))
-        ]
     }
 
     struct Preview: PreviewProvider {
         static var previews: some View {
             VStack(spacing: 8) {
-                PatternView(points: PreviewData.sample, maxGain: 2.0, geometry: PreviewData.geom)
+                PatternView(points: PreviewData.sample,
+                            maxGain: 2.0)
                     .frame(width: 300, height: 300)
                 // simple legend for preview
                 HStack {

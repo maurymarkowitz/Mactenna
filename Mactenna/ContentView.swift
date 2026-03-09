@@ -45,7 +45,7 @@ struct ContentView: View {
                 .frame(minWidth: 600)
 
             // ── Results pane ──────────────────────────────────────────────
-            ResultsView(deck: deck)
+            ResultsView(deck: deck, selectedIndex: $selectedIndex)
                 .frame(minWidth: 300)
         }
         // ensure the window opens large enough that the comment column is visible
