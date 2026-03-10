@@ -63,7 +63,7 @@ struct GeometryView: NSViewRepresentable {
     /// Returns (vertices, normals, indices) for a cylinder with the given radius and height,
     /// centered at origin, extending along the Z axis.
     /// `sides` is the number of sides around the circumference (default 12).
-    private func cylinderMesh(radius: Float, height: Float, sides: Int = 12) 
+    private func cylinderMesh(radius: Float, height: Float, sides: Int = 12)
         -> (vertices: [SCNVector3], normals: [SCNVector3], indices: [UInt32]) {
         var vertices: [SCNVector3] = []
         var normals: [SCNVector3] = []
@@ -77,12 +77,12 @@ struct GeometryView: NSViewRepresentable {
             let angle = Float(i) * angleStep
             let x = radius * cos(angle)
             let y = radius * sin(angle)
-            
+
             // Bottom cap vertex
             vertices.append(SCNVector3(x: CGFloat(x), y: CGFloat(y), z: CGFloat(-halfHeight)))
             // Top cap vertex
             vertices.append(SCNVector3(x: CGFloat(x), y: CGFloat(y), z: CGFloat(halfHeight)))
-            
+
             // Side normals (pointing outward)
             let nx = cos(angle)
             let ny = sin(angle)
@@ -105,12 +105,12 @@ struct GeometryView: NSViewRepresentable {
             let i1 = UInt32((i * 2) + 1)
             let i2 = UInt32(((i + 1) % sides) * 2)
             let i3 = UInt32((((i + 1) % sides) * 2) + 1)
-            
+
             // First triangle
             indices.append(i0)
             indices.append(i1)
             indices.append(i2)
-            
+
             // Second triangle
             indices.append(i1)
             indices.append(i3)
@@ -395,12 +395,12 @@ struct GeometryView: NSViewRepresentable {
             // record metadata for coordinator so hit conversion & recolor work
             coordinator.segmentFaceCount = segmentFaceCount
             coordinator.segmentIndexMap = segmentIndexMap
-            
+
             // (no proxies; selection via face index)
         }
 
         scene.rootNode.addChildNode(container)
-        
+
         // Add handles for the currently selected card (if any)
         if let sel = selectedCard,
            !geometry.isEmpty {
@@ -409,7 +409,7 @@ struct GeometryView: NSViewRepresentable {
                 coordinator.addLineHandles(to: scene, cardSegments: cardSegs)
             }
         }
-        
+
         return scene
     }
 
