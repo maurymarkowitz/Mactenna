@@ -25,8 +25,36 @@ fileprivate func *(lhs: SCNVector3, rhs: Float) -> SCNVector3 {
     return lhs * CGFloat(rhs)
 }
 
-/// SCNView subclass providing wheel‑zoom behaviour identical to PatternView.
+fileprivate func -(lhs: SCNVector3, rhs: SCNVector3) -> SCNVector3 {
+    return SCNVector3(lhs.x - rhs.x, lhs.y - rhs.y, lhs.z - rhs.z)
+}
+
+fileprivate func dot(_ a: SCNVector3, _ b: SCNVector3) -> CGFloat {
+    return a.x*b.x + a.y*b.y + a.z*b.z
+}
+
+fileprivate extension SCNVector3 {
+    func length() -> CGFloat {
+        return sqrt(x*x + y*y + z*z)
+    }
+    func normalized() -> SCNVector3 {
+        let l = length()
+        return l > 0 ? SCNVector3(x/l, y/l, z/l) : SCNVector3Zero
+    }
+}
+
+/// Protocol implemented by the coordinator to receive mouse events.
+fileprivate protocol GeometryViewDragDelegate: AnyObject {
+    func mouseDown(at point: NSPoint, in view: SCNView)
+    func mouseDragged(at point: NSPoint, in view: SCNView)
+    func mouseUp(at point: NSPoint, in view: SCNView)
+}
+
+/// SCNView subclass providing wheel‑zoom behaviour identical to PatternView,
+/// plus forwarding of mouse events to a delegate.
 fileprivate final class ZoomableSCNView: SCNView {
+    weak var dragDelegate: GeometryViewDragDelegate?
+
     override func scrollWheel(with event: NSEvent) {
         if let cam = scene?.rootNode.childNodes.first(where: { $0.camera != nil }) {
             let dir = cam.worldFront
@@ -36,6 +64,21 @@ fileprivate final class ZoomableSCNView: SCNView {
             super.scrollWheel(with: event)
         }
     }
+
+    override func mouseDown(with event: NSEvent) {
+        super.mouseDown(with: event)
+        dragDelegate?.mouseDown(at: event.locationInWindow, in: self)
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        super.mouseDragged(with: event)
+        dragDelegate?.mouseDragged(at: event.locationInWindow, in: self)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        super.mouseUp(with: event)
+        dragDelegate?.mouseUp(at: event.locationInWindow, in: self)
+    }
 }
 
 struct GeometryView: NSViewRepresentable {
@@ -44,10 +87,27 @@ struct GeometryView: NSViewRepresentable {
     /// Currently selected card index (or nil).
     var selectedCard: Int?
     /// Called whenever the user selects a card in the 3‑D view.
-    /// The parent is responsible for updating its own state (typically a
-    /// `@State`/`@Binding` variable) so that the table and the view stay in
-    /// sync.
     let onSelect: (Int?) -> Void
+    /// Called when a drag finishes and the geometry has changed.
+    /// Arguments are (cardIndex, newStart?, newEnd?).  Only one of the
+    /// start/end tuples will be non-nil, depending on which handle was
+    /// dragged; mid drags do not generate commits.
+    let onDragCommit: (Int, SIMD3<Float>?, SIMD3<Float>?) -> Void
+
+    // --- drag support types ------------------------------------------------
+    /// identifies one of the three spherical handles attached to a wire
+    enum HandleID: Equatable {
+        case start(card: Int)
+        case mid(card: Int)
+        case end(card: Int)
+    }
+
+    /// current interaction state while editing geometry
+    enum DragState {
+        case idle
+        case dragging(handle: HandleID, node: SCNNode, startWorld: SCNVector3, preSnapshot: String)
+    }
+
 
     // observe preferences so changes trigger SwiftUI updates
     @AppStorage("geometryRadiusScale") private var radiusScale: Double = Preferences.shared.geometryRadiusScale
@@ -153,11 +213,12 @@ struct GeometryView: NSViewRepresentable {
 
     func makeNSView(context: Context) -> SCNView {
         let scnView = ZoomableSCNView()
+        scnView.dragDelegate = context.coordinator
         scnView.scene = makeScene(coordinator: context.coordinator)
         scnView.allowsCameraControl = true
         scnView.autoenablesDefaultLighting = true
         scnView.backgroundColor = NSColor.windowBackgroundColor
-        // install click recognizer
+        // keep click recognizer temporarily for testing; later we can remove
         let click = NSClickGestureRecognizer(target: context.coordinator,
                                              action: #selector(Coordinator.handleClick(_:)))
         scnView.addGestureRecognizer(click)
@@ -292,7 +353,15 @@ struct GeometryView: NSViewRepresentable {
             let length = sqrt(dx*dx + dy*dy + dz*dz)
 
             let globalScale: CGFloat = CGFloat(radiusScale)
-            var radius = max(CGFloat(length) * 0.002 * globalScale, 0.002 * globalScale)
+            // if the segment provided an explicit radius (from F7) use it
+            // verbatim; the scale slider only affects automatically-derived
+            // values to avoid blowing up user-entered numbers.
+            var radius: CGFloat
+            if seg.radius > 0 {
+                radius = CGFloat(seg.radius)
+            } else {
+                radius = max(CGFloat(length) * 0.002 * globalScale, 0.002 * globalScale)
+            }
             if exaggerateDiameters {
                 let threshold = CGFloat(length) * 0.02 * globalScale
                 if radius < threshold {
@@ -428,7 +497,7 @@ private func lineNode(from: SCNVector3, to: SCNVector3, color: NSColor) -> SCNNo
 }
 
 // MARK: – Coordinator
-class Coordinator: NSObject {
+class Coordinator: NSObject, GeometryViewDragDelegate {
     var parent: GeometryView
     /// Cached geometry from the last scene build.
     var lastGeometry: [GeometrySegment]?
@@ -438,6 +507,9 @@ class Coordinator: NSObject {
     var segmentFaceCount: [Int] = []
     /// Map from vertex ranges to card indices, for color updates.
     var segmentIndexMap: [(startIndex: UInt32, vertexCount: UInt32, cardIndex: Int)] = []
+
+    // current drag/interaction state (Phase B)
+    var dragState: GeometryView.DragState = .idle
 
     init(_ parent: GeometryView) {
         self.parent = parent
@@ -474,25 +546,43 @@ class Coordinator: NSObject {
                              (start.y + end.y) / 2,
                              (start.z + end.z) / 2)
 
-        // compute handle radius using the same formula as the wire cylinder,
-        // then scale up to 1.5× the wire radius so handles are clearly visible.
-        // Use the full wire length (start→end) for the radius calculation.
+        // compute handle radius using the same base formula we used for
+        // the cylinder geometry.  handles should be noticeably larger than
+        // the wire itself, so apply a separate multiplier and clamp to a
+        // sensible minimum.
         let dx = end.x - start.x
         let dy = end.y - start.y
         let dz = end.z - start.z
         let segLen = CGFloat(sqrt(dx*dx + dy*dy + dz*dz))
         let globalScale = CGFloat(parent.radiusScale)
-        var wireRadius = max(segLen * 0.002 * globalScale, 0.002 * globalScale)
-        if parent.exaggerateDiameters {
-            let threshold = segLen * 0.02 * globalScale
-            if wireRadius < threshold { wireRadius *= 5 }
+        var wireRadius: CGFloat
+        // all segments on this card share the same radius; read from F7 if
+        // specified, otherwise fall back to the heuristic.
+        let explicitRadius = CGFloat(first.radius)
+        if explicitRadius > 0 {
+            wireRadius = explicitRadius
+        } else {
+            wireRadius = max(segLen * 0.002 * globalScale, 0.002 * globalScale)
+            if parent.exaggerateDiameters {
+                let threshold = segLen * 0.02 * globalScale
+                if wireRadius < threshold { wireRadius *= 5 }
+            }
         }
-        let radius = wireRadius * 0.85
+        // make the handle bigger than the wire so it’s easy to grab; also
+        // enforce a minimum size based on the segment length so tiny wires still
+        // produce a visible sphere.
+        var radius = wireRadius * 1.5
+        radius = max(radius, segLen * 0.05)
+        radius = max(radius, 0.01)   // final safety clamp
         func sphere(color: NSColor, name: String) -> SCNNode {
             let sph = SCNSphere(radius: radius)
-            sph.firstMaterial?.diffuse.contents = color
+            if let mat = sph.firstMaterial {
+                mat.diffuse.contents = color
+                mat.lightingModel = .constant
+            }
             let node = SCNNode(geometry: sph)
-            node.name = "handle_\(name)"
+            // include card index in name so hitHandle can decode it reliably
+            node.name = "handle_\(name)_card_\(first.cardIndex)"
             return node
         }
 
@@ -548,19 +638,157 @@ class Coordinator: NSObject {
         }
         // no selection; scene update will reflect this
     }
-}
+
+    // MARK: - Drag helpers
+
+    /// convert a window-space point to the first world coordinate hit by ray
+    private func worldPoint(from windowPoint: NSPoint, in view: SCNView) -> SCNVector3? {
+        let local = view.convert(windowPoint, from: nil)
+        let hits = view.hitTest(local, options: nil)
+        return hits.first?.worldCoordinates
+    }
+
+    /// compute the world-space axis (origin and unit direction) for the given card
+    private func axisFor(card: Int, relativeTo node: SCNNode) -> (origin: SCNVector3, dir: SCNVector3)? {
+        guard let seg = parent.geometry.first(where: { $0.cardIndex == card }),
+              let cont = node.parent else { return nil }
+        let p1 = SCNVector3(CGFloat(seg.start.x), CGFloat(seg.start.y), CGFloat(seg.start.z))
+        let p2 = SCNVector3(CGFloat(seg.end.x),   CGFloat(seg.end.y),   CGFloat(seg.end.z))
+        let w1 = cont.convertPosition(p1, to: nil)
+        let w2 = cont.convertPosition(p2, to: nil)
+        let dir = (w2 - w1).normalized()
+        return (origin: w1, dir: dir)
+    }
+
+    /// Given a finished drag, compute deck-space start/end coordinates.
+    /// Returns (cardIndex, newStart?, newEnd?) where only one of the two
+    /// coordinate triples is non‑nil depending on which handle was moved.
+    private func deckCoords(afterDrag hid: HandleID, worldPos: SCNVector3) -> (Int, SIMD3<Float>?, SIMD3<Float>?)? {
+        switch hid {
+        case .mid:
+            return nil
+        case .start(let card):
+            // convert world back to container-local
+            if let node = dragStateNode(for: hid) {
+                guard let cont = node.parent else { break }
+                let local = cont.convertPosition(worldPos, from: nil)
+                let v = SIMD3<Float>(Float(local.x), Float(local.y), Float(local.z))
+                return (card, v, nil)
+            }
+        case .end(let card):
+            if let node = dragStateNode(for: hid) {
+                guard let cont = node.parent else { break }
+                let local = cont.convertPosition(worldPos, from: nil)
+                let v = SIMD3<Float>(Float(local.x), Float(local.y), Float(local.z))
+                return (card, nil, v)
+            }
+        }
+        return nil
+    }
+
+    /// helper to pull the current node from dragState for a given handle id
+    private func dragStateNode(for hid: HandleID) -> SCNNode? {
+        if case .dragging(let existing, let node, _, _) = dragState,
+           existing == hid {
+            return node
+        }
+        return nil
+    }
+
+    /// detect a drag handle under the pointer, returning its ID and world pos
+    private func hitHandle(at windowPoint: NSPoint, in view: SCNView) -> (HandleID, SCNNode, SCNVector3)? {
+        let local = view.convert(windowPoint, from: nil)
+        let hits = view.hitTest(local, options: nil)
+        for hit in hits {
+            if let name = hit.node.name, name.hasPrefix("handle_") {
+                // name format: handle_<kind>_card_<index>
+                let parts = name.split(separator: "_")
+                guard parts.count == 4,
+                      parts[0] == "handle",
+                      parts[2] == "card",
+                      let cardIdx = Int(parts[3])
+                else { continue }
+                let kind = String(parts[1])
+                let hid: HandleID
+                switch kind {
+                case "start": hid = .start(card: cardIdx)
+                case "mid":   hid = .mid(card: cardIdx)
+                case "end":   hid = .end(card: cardIdx)
+                default: continue
+                }
+                return (hid, hit.node, hit.worldCoordinates)
+            }
+        }
+        return nil
+    }
+
+    // MARK: - GeometryViewDragDelegate
+    func mouseDown(at point: NSPoint, in view: SCNView) {
+        // only turn off camera control if the user actually grabbed a handle
+        if let (hid, node, world) = hitHandle(at: point, in: view) {
+            view.allowsCameraControl = false
+            // begin drag state; snapshot placeholder
+            dragState = .dragging(handle: hid, node: node, startWorld: world, preSnapshot: "")
+            print("begin drag \(hid) at \(world)")
+        }
+    }
+    func mouseDragged(at point: NSPoint, in view: SCNView) {
+        guard case .dragging(let hid, let node, let start, _) = dragState else { return }
+        guard let world = worldPoint(from: point, in: view) else { return }
+        // apply simple axial constraint when dragging start/end of GW
+        let constrained: SCNVector3
+        switch hid {
+        case .mid:
+            // free translation: unproject the screen point back onto the same
+            // camera-view plane as the handle's original position.  This keeps
+            // the handle tied to the view's depth and prevents it from drifting
+            // in world‑z when the container orientation changes.
+            let local = view.convert(point, from: nil)
+            var proj = view.projectPoint(node.worldPosition)
+            proj.x = CGFloat(Float(local.x)); proj.y = CGFloat(Float(local.y))
+            constrained = view.unprojectPoint(proj)
+        case .start(let card), .end(let card):
+            if let (origin, dir) = axisFor(card: card, relativeTo: node) {
+                // project world point onto the world-space axis
+                let v = world - origin
+                let t = dot(v, dir)
+                constrained = origin + dir * t
+            } else {
+                constrained = world
+            }
+        }
+        node.worldPosition = constrained
+        print("dragging \(hid) -> \(constrained)")
+    }
+    func mouseUp(at point: NSPoint, in view: SCNView) {
+        // restore camera control after any drag attempt
+        view.allowsCameraControl = true
+        switch dragState {
+        case .idle: break
+        case .dragging(let hid, let node, _, let snap):
+            if let world = worldPoint(from: point, in: view) {
+                print("end drag \(hid) at \(world) snapshot=\(snap)")
+                // compute deck coordinate and notify parent
+                if let (card,newStart,newEnd) = deckCoords(afterDrag: hid, worldPos: node.worldPosition) {
+                    parent.onDragCommit(card, newStart, newEnd)
+                }
+            }
+            dragState = .idle
+        }
+    }
 }
 
+} // end struct GeometryView
 
 #if DEBUG
 extension GeometryView {
     struct Preview: PreviewProvider {
         static let sampleGeom: [GeometrySegment] = [
-            GeometrySegment(start: SIMD3(-1,0,0), end: SIMD3(1,0,0), cardIndex: 0),
-            GeometrySegment(start: SIMD3(0,-1,0), end: SIMD3(0,1,0), cardIndex: 1)
+            GeometrySegment(start: SIMD3(-1,0,0), end: SIMD3(1,0,0), cardIndex: 0, radius: 0),
+            GeometrySegment(start: SIMD3(0,-1,0), end: SIMD3(0,1,0), cardIndex: 1, radius: 0)
         ]
         static var previews: some View {
-            GeometryView(geometry: sampleGeom, selectedCard: nil, onSelect: { _ in })
+            GeometryView(geometry: sampleGeom, selectedCard: nil, onSelect: { _ in }, onDragCommit: { _,_,_ in })
                 .frame(width: 300, height: 300)
         }
     }

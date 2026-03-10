@@ -12,6 +12,8 @@ struct ResultsView: View {
 
     /// Reference to the deck so we can request additional pattern calculations.
     @ObservedObject var deck: NECDeck
+    /// Access the undo manager from environment (used when committing drags).
+    @Environment(\.undoManager) private var undoManager
     /// Currently selected deck row, shared with the table view.
     @Binding var selectedIndex: Int?
 
@@ -193,11 +195,22 @@ struct ResultsView: View {
 
     /// View displayed when the Geometry tab is selected.
     private func geometryTab() -> some View {
+        // construct segments directly from deck rows so edits appear immediately
         let geomSegments: [GeometrySegment] =
-            deck.geometrySegments().map { seg in
-                GeometrySegment(start: seg.start,
-                                end: seg.end,
-                                cardIndex: seg.cardIndex)
+            (0..<deck.cardCount).compactMap { idx in
+                guard let row = deck.card(at: idx),
+                      deck.isInGeometrySection(row: idx),
+                      !row.isIgnored, !row.isInvisible else { return nil }
+                switch row.cardCode {
+                case "GW":
+                    // network wire: F1–F3 = start, F4–F6 = end, F7 = radius
+                    let start = SIMD3<Float>(Float(row.f[0]), Float(row.f[1]), Float(row.f[2]))
+                    let end   = SIMD3<Float>(Float(row.f[3]), Float(row.f[4]), Float(row.f[5]))
+                    let rad   = Float(row.f[6])
+                    return GeometrySegment(start: start, end: end, cardIndex: idx, radius: rad)
+                default:
+                    return nil
+                }
             }
         return ZStack {
             if geomSegments.isEmpty {
@@ -217,10 +230,36 @@ struct ResultsView: View {
                              selectedCard: selectedIndex,
                              onSelect: { new in
                                  selectedIndex = new
+                             },
+                             onDragCommit: { card, newStart, newEnd in
+                                 handleDragCommit(card: card, newStart: newStart, newEnd: newEnd)
                              })
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
+    }
+
+    /// Apply a position change resulting from a handle drag to the NEC deck.
+    private func handleDragCommit(card: Int, newStart: SIMD3<Float>?, newEnd: SIMD3<Float>?) {
+        print("commit drag card \(card) start=\(String(describing: newStart)) end=\(String(describing: newEnd))")
+        let snapshot = deck.text()
+        if let start = newStart {
+            deck.setFloatField(row: card, field: 1, value: Double(start.x))
+            deck.setFloatField(row: card, field: 2, value: Double(start.y))
+            deck.setFloatField(row: card, field: 3, value: Double(start.z))
+        }
+        if let end = newEnd {
+            deck.setFloatField(row: card, field: 4, value: Double(end.x))
+            deck.setFloatField(row: card, field: 5, value: Double(end.y))
+            deck.setFloatField(row: card, field: 6, value: Double(end.z))
+        }
+        selectedIndex = card
+        // force a table reload in case SwiftUI hasn’t yet flushed the change
+        NotificationCenter.default.post(name: NSNotification.Name("DeckDidEdit"), object: deck)
+        undoManager?.registerUndo(withTarget: deck) { d in
+            d.restore(text: snapshot)
+        }
+        undoManager?.setActionName("Move card \(card)")
     }
 }
 

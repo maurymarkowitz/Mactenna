@@ -138,7 +138,8 @@ Handles are interactive objects that need individual transforms during drag — 
 
 ### Modified Types
 
-- **`GeometrySegment`** — add `wireRadius: Float` field (needed for handle sizing and snap threshold)
+- **`GeometrySegment`** — added `radius` field (F7); wire thickness honours explicit radii without further scaling (slider only affects computed sizes) ✅
+- **Handle size** — handles are now derived from the same base radius but are multiplied by 1.5 and clamped so they remain visible ✅
 - **`GeometryView`** — add `@Binding` for deck mutation callbacks, or pass `NECDeck` directly
 - **`Coordinator`** — becomes the primary interaction controller: mouse tracking, constraint computation, snap detection, dimension updates, undo commits
 
@@ -187,6 +188,7 @@ GW is the simplest and most common — implement it first and use it as the temp
 3. On mouse-down on a handle node: begin drag, capture `preEditSnapshot`
 4. On mouse-drag: project screen delta to 3D constraint, update handle position
 5. On mouse-up: commit edit (compute new field values, call setters, register undo)
+6. Ensure deck edits trigger table view reload — subscribe to editGeneration or post notification
 6. On Escape during drag: revert handle position, discard
 7. **Files**: GeometryView.swift
 
@@ -239,7 +241,7 @@ GW is the simplest and most common — implement it first and use it as the temp
 ## Relevant Files
 
 - **Mactenna/Views/GeometryView.swift** — Primary file for all phases; currently ~400 lines, will grow significantly
-- **Mactenna/Views/PatternView.swift** — `GeometrySegment` struct definition; add `wireRadius` field
+- **Mactenna/Views/PatternView.swift** — updated `GeometrySegment` struct to include radius; samples adjusted
 - **Mactenna/Models/NECDeck.swift** — `geometrySegments()` populates segments; `setFloatField()` for write-back; undo via `text()` snapshots
 - **Mactenna/Models/NECCardType.swift** — Field label metadata per card type (used for dimension labels)
 - **Mactenna/Bridge/MactennaOpenNEC.h** — C geometry query helpers; may need new helpers for patch geometry

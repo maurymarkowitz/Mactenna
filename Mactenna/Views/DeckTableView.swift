@@ -14,6 +14,7 @@
 #if os(macOS)
 import SwiftUI
 import AppKit
+import Combine
 
 // MARK: – Column descriptor
 
@@ -196,6 +197,7 @@ struct DeckTableView: NSViewRepresentable {
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let tableView = scrollView.documentView as? NSTableView else { return }
+        context.coordinator.tableView     = tableView
         context.coordinator.deck          = deck
         context.coordinator.onCommitEdit  = onCommitEdit   // keep closure fresh
         context.coordinator.onMove        = onMove          // keep closure fresh
@@ -255,15 +257,47 @@ struct DeckTableView: NSViewRepresentable {
         weak var tableView: NSTableView?
         // labels overlayed in the scrollview
         var sectionLabels: [NSTextField] = []
+        // keep Combine subscriptions so we can refresh the table when the
+        // deck posts small edits that don’t change cardCount.
+        private var cancellables = Set<AnyCancellable>()
 
         init(deck: NECDeck,
              selectedIndex: Binding<Int?>,
              onCommitEdit: @escaping (Int, String, String) -> Void,
              onMove: @escaping (Int, Int, String) -> Void) {
+            // initialize all stored properties before calling super
             self.deck          = deck
             self.selectedIndex = selectedIndex
             self.onCommitEdit  = onCommitEdit
             self.onMove        = onMove
+
+            super.init()
+
+            // reload the table whenever the deck’s editGeneration changes,
+            // which occurs for every field-level modification.  This avoids
+            // relying solely on SwiftUI’s updateNSView timing.
+            deck.$editGeneration
+                .receive(on: RunLoop.main)
+                .sink { [weak self] _ in
+                    guard let tv = self?.tableView,
+                          tv.currentEditor() == nil else { return }
+                    tv.reloadData()
+                }
+                .store(in: &cancellables)
+
+            // also listen for explicit notification from ResultsView
+            NotificationCenter.default.addObserver(self,
+                                                   selector: #selector(deckDidEditNotification(_:)),
+                                                   name: NSNotification.Name("DeckDidEdit"),
+                                                   object: deck)
+        }
+
+        @objc private func deckDidEditNotification(_ note: Notification) {
+            tableView?.reloadData()
+        }
+
+        deinit {
+            NotificationCenter.default.removeObserver(self)
         }
 
         // MARK: NSTextFieldDelegate – commit edit

@@ -46,6 +46,9 @@ struct GeometrySegment: Equatable, Hashable {
     let start: SIMD3<Float>
     let end:   SIMD3<Float>
     let cardIndex: Int
+    /// Wire radius (metres) read from the card’s F7 field.  Zero indicates
+    /// that the caller should fall back to a heuristic based on segment length.
+    let radius: Float
 }
 
 

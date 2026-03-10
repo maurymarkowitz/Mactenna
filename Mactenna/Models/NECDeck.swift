@@ -831,6 +831,8 @@ final class NECDeck: ObservableObject {
         let start: SIMD3<Float>
         let end:   SIMD3<Float>
         let cardIndex: Int   // 0-based row index for cross-selection
+        /// wire radius in metres as read from F7 (zero if unspecified)
+        let radius: Float
     }
 
     /// Returns an array of geometry segments derived from the most recent
@@ -858,9 +860,17 @@ final class NECDeck: ObservableObject {
             let x2 = Float(nec_geometry_seg_x2(ctx, i))
             let y2 = Float(nec_geometry_seg_y2(ctx, i))
             let z2 = Float(nec_geometry_seg_z2(ctx, i))
+            // attempt to read explicit radius from the deck if available
+            let radius: Float
+            if let row = card(at: cardIndex) {
+                radius = Float(row.f[6])
+            } else {
+                radius = 0
+            }
             segs.append(.init(start: SIMD3(x1,y1,z1),
                                end: SIMD3(x2,y2,z2),
-                              cardIndex: Int(cardIndex)))
+                               cardIndex: Int(cardIndex),
+                               radius: radius))
         }
         return segs
     }
