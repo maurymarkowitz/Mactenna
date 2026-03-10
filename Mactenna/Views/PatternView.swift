@@ -42,11 +42,12 @@ fileprivate final class ZoomableSCNView: SCNView {
 }
 
 // simple segment representation shared by view and deck model
-struct GeometrySegment {
+struct GeometrySegment: Equatable, Hashable {
     let start: SIMD3<Float>
     let end:   SIMD3<Float>
     let cardIndex: Int
 }
+
 
 struct PatternView: NSViewRepresentable {
     /// Radiation pattern points to display.  Coordinates are in degrees and

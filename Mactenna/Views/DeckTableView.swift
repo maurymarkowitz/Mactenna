@@ -79,8 +79,12 @@ struct DeckTableView: NSViewRepresentable {
     /// and registering undo.
     var onCommitEdit: (Int, String, String) -> Void = { _, _, _ in }
 
+    /// Called just before a row drag completes: (srcIndex, dropRow, preMoveSnapshot).
+    /// The parent view is responsible for registering undo using the snapshot.
+    var onMove: (Int, Int, String) -> Void = { _, _, _ in }
+
     func makeCoordinator() -> Coordinator {
-        Coordinator(deck: deck, selectedIndex: $selectedIndex, onCommitEdit: onCommitEdit)
+        Coordinator(deck: deck, selectedIndex: $selectedIndex, onCommitEdit: onCommitEdit, onMove: onMove)
     }
 
     func makeNSView(context: Context) -> NSScrollView {
@@ -111,23 +115,24 @@ struct DeckTableView: NSViewRepresentable {
 
             // Add a tooltip describing the column purpose.  Keep it brief;
             // specific field tooltips are provided by the editable cells themselves.
-            let tip: String
-            switch col.id {
-            case "rownum":     tip = "Row number (1‑based)"
-            case "ignore":     tip = "Check to comment out (ignore) the card"
-            case "invisible":  tip = "Mark card invisible (no other effect)"
-            case "card":       tip = "NEC card type (two-letter code)"
-            case "comment":    tip = "Comment text attached to the card"
-            default:
-                if col.id.hasPrefix("I") {
-                    tip = "Integer field \(col.id.dropFirst())"
-                } else if col.id.hasPrefix("F") {
-                    tip = "Float field \(col.id.dropFirst())"
-                } else {
-                    tip = col.title
-                }
-            }
-            //tc.headerCell.toolTip = tip
+            // TODO: what is the tip called, if any?
+//            let tip: String
+//            switch col.id {
+//            case "rownum":     tip = "Row number (1‑based)"
+//            case "ignore":     tip = "Check to comment out (ignore) the card"
+//            case "invisible":  tip = "Mark card invisible (no other effect)"
+//            case "card":       tip = "NEC card type (two-letter code)"
+//            case "comment":    tip = "Comment text attached to the card"
+//            default:
+//                if col.id.hasPrefix("I") {
+//                    tip = "Integer field \(col.id.dropFirst())"
+//                } else if col.id.hasPrefix("F") {
+//                    tip = "Float field \(col.id.dropFirst())"
+//                } else {
+//                    tip = col.title
+//                }
+//            }
+//            tc.headerCell.toolTip = tip
 
             if col.alignment == .right {
                 let header = NSTableHeaderCell()
@@ -193,6 +198,7 @@ struct DeckTableView: NSViewRepresentable {
         guard let tableView = scrollView.documentView as? NSTableView else { return }
         context.coordinator.deck          = deck
         context.coordinator.onCommitEdit  = onCommitEdit   // keep closure fresh
+        context.coordinator.onMove        = onMove          // keep closure fresh
         // don't reload while the user is actively editing; doing so will
         // terminate the editor and make it impossible to type.  `currentEditor`
         // returns the field editor if one is active.
@@ -245,16 +251,19 @@ struct DeckTableView: NSViewRepresentable {
         var deck: NECDeck
         var selectedIndex: Binding<Int?>
         var onCommitEdit: (Int, String, String) -> Void
+        var onMove: (Int, Int, String) -> Void
         weak var tableView: NSTableView?
         // labels overlayed in the scrollview
         var sectionLabels: [NSTextField] = []
 
         init(deck: NECDeck,
              selectedIndex: Binding<Int?>,
-             onCommitEdit: @escaping (Int, String, String) -> Void) {
+             onCommitEdit: @escaping (Int, String, String) -> Void,
+             onMove: @escaping (Int, Int, String) -> Void) {
             self.deck          = deck
             self.selectedIndex = selectedIndex
             self.onCommitEdit  = onCommitEdit
+            self.onMove        = onMove
         }
 
         // MARK: NSTextFieldDelegate – commit edit
@@ -346,6 +355,8 @@ struct DeckTableView: NSViewRepresentable {
             let hi = range.upperBound + 1
             guard row >= lo, row <= hi else { return false }
 
+            let snapshot = deck.text()
+            onMove(src, row, snapshot)
             deck.moveCard(from: src, to: row)
             tableView.reloadData()
 
@@ -685,7 +696,7 @@ struct DeckTableView: NSViewRepresentable {
                 if let row = optRow {
                     lbl.isHidden = false
                     // convert row rect into contentView coordinates (accounts for scrolling)
-                    var rowRect = tv.rect(ofRow: row)
+                    let rowRect = tv.rect(ofRow: row)
                     let rowInContent = tv.convert(rowRect, to: scroll.contentView)
                     let contentOrigin = scroll.contentView.bounds.origin
                     // compute y relative to visible area, clamp at header bottom
@@ -835,6 +846,7 @@ struct DeckTableView: NSViewRepresentable {
 // MARK: – Preview
 
 #Preview {
+    @Previewable @State var sel: Int? = nil
     let sample = """
     CM Half-wave dipole at 300 MHz
     CE
@@ -846,7 +858,6 @@ struct DeckTableView: NSViewRepresentable {
     EN
     """
     let deck = NECDeck(text: sample)
-    @State var sel: Int? = nil
     return DeckTableView(deck: deck, selectedIndex: $sel)
         .frame(minWidth: 900, minHeight: 260)
 }

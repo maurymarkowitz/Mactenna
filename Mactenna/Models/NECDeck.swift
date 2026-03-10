@@ -817,7 +817,7 @@ final class NECDeck: ObservableObject {
 
     // MARK: – Geometry extraction (Phase 5)
     /// Simple wire segment representation for the geometry viewer.
-    struct GeometrySegment {
+    struct GeometrySegment: Equatable, Hashable {
         let start: SIMD3<Float>
         let end:   SIMD3<Float>
         let cardIndex: Int   // 0-based row index for cross-selection
@@ -833,7 +833,10 @@ final class NECDeck: ObservableObject {
         segs.reserveCapacity(Int(n))
         for i in 0..<n {
             let cardnum = nec_geometry_seg_cardnum(ctx, i)
-            let cardIndex = cardnum > 0 ? cardnum - 1 : -1
+            // cardnum is the 0-based deck card index (set from the geometry
+            // loop variable `i` which runs from deck->geometry_start to
+            // deck->geometry_end), so it maps directly to the table row.
+            let cardIndex = Int(cardnum)
             if cardIndex >= 0, let row = card(at: Int(cardIndex)) {
                 if row.isIgnored || row.isInvisible {
                     continue

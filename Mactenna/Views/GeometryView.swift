@@ -43,15 +43,28 @@ struct GeometryView: NSViewRepresentable {
     let geometry: [GeometrySegment]
     /// Currently selected card index (or nil).
     @Binding var selectedCard: Int?
-    
+
     // observe preferences so changes trigger SwiftUI updates
     @AppStorage("geometryRadiusScale") private var radiusScale: Double = Preferences.shared.geometryRadiusScale
     @AppStorage("geometryExaggerateSmallDiameters") private var exaggerateDiameters: Bool = Preferences.shared.geometryExaggerateSmallDiameters
-    
+
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
     }
-    
+
+    // MARK: – Helper for avoiding full scene rebuilds
+
+    /// Returns true if the provided geometry array is equivalent to the one
+    /// last used to build the scene.  Comparison is cheap thanks to
+    /// `GeometrySegment: Equatable`.
+    private func geometryIsUnchanged(_ geometry: [GeometrySegment], coordinator: Coordinator) -> Bool {
+        // If we have never recorded any geometry yet, this is the first update
+        // and we should rebuild the scene.  /nil/ is never equal to a real array.
+        guard let last = coordinator.lastGeometry else { return false }
+        return last == geometry
+    }
+
+
     func makeNSView(context: Context) -> SCNView {
         let scnView = ZoomableSCNView()
         scnView.scene = makeScene()
@@ -64,11 +77,28 @@ struct GeometryView: NSViewRepresentable {
         scnView.addGestureRecognizer(click)
         return scnView
     }
-    
+
     func updateNSView(_ scnView: SCNView, context: Context) {
+        // If only the selected card changed (geometry identical), preserve
+        // the existing camera transform and update colours/handles.
+        if geometryIsUnchanged(geometry, coordinator: context.coordinator) {
+            context.coordinator.applySelectionHighlight(to: scnView, selected: selectedCard)
+            return
+        }
+
+        // Geometry changed – rebuild scene and remember for next time.
+        let previousCameraTransform = scnView.scene?.rootNode.childNodes.first(where: { $0.camera != nil })?.transform
         scnView.scene = makeScene()
+        if let camTransform = previousCameraTransform {
+            scnView.scene?.rootNode.childNodes.first(where: { $0.camera != nil })?.transform = camTransform
+        }
+        context.coordinator.lastGeometry = geometry
+
+        // After rebuilding we still need to reflect the current selection so
+        // that handles appear immediately.
+        context.coordinator.applySelectionHighlight(to: scnView, selected: selectedCard)
     }
-    
+
     private func makeScene() -> SCNScene {
         let scene = SCNScene()
         // camera orientation same as PatternView
@@ -79,14 +109,14 @@ struct GeometryView: NSViewRepresentable {
                         up: SCNVector3(0,0,1),
                         localFront: SCNVector3(0,0,-1))
         scene.rootNode.addChildNode(cameraNode)
-        
+
         // placeholder for axis; will build after bounding box computed
         func buildAxes(length: CGFloat) {
             let axis = SCNNode()
             axis.addChildNode(lineNode(from: SCNVector3Zero, to: SCNVector3(length,0,0), color: .red))
             axis.addChildNode(lineNode(from: SCNVector3Zero, to: SCNVector3(0,length,0), color: .green))
             axis.addChildNode(lineNode(from: SCNVector3Zero, to: SCNVector3(0,0,length), color: .blue))
-            
+
             func labelNode(_ text: String, color: NSColor, position: SCNVector3, axisLength: CGFloat) -> SCNNode {
                 let txt = SCNText(string: text, extrusionDepth: 0.1)
                 // font size roughly matches the old hard-coded scale; we
@@ -117,9 +147,10 @@ struct GeometryView: NSViewRepresentable {
                                         axisLength: length))
             scene.rootNode.addChildNode(axis)
         }
-        
+
         // compute bounding box first so we know how to scale
         let container = SCNNode()
+        container.name = "geometryContainer" // so handles can be attached later
         var minB = SCNVector3(CGFloat.infinity, CGFloat.infinity, CGFloat.infinity)
         var maxB = SCNVector3(-CGFloat.infinity, -CGFloat.infinity, -CGFloat.infinity)
         for seg in geometry {
@@ -139,13 +170,13 @@ struct GeometryView: NSViewRepresentable {
         // halve the previous scale so axes are about 50% shorter
         let axisLen = max(dx, max(dy, dz)) * 0.6
         buildAxes(length: axisLen)
-        
+
         // center container
         let cx = (minB.x + maxB.x) / 2
         let cy = (minB.y + maxB.y) / 2
         let cz = (minB.z + maxB.z) / 2
         container.position = SCNVector3(-cx, -cy, -cz)
-        
+
         // compute bounding-sphere radius and move camera so entire box is visible
         func radius(from minB: SCNVector3, to maxB: SCNVector3, center: SCNVector3) -> CGFloat {
             let corners = [minB, maxB]
@@ -198,9 +229,9 @@ struct GeometryView: NSViewRepresentable {
 
             container.addChildNode(node)
         }
-    
+
     scene.rootNode.addChildNode(container)
-    
+
     return scene
 }
 
@@ -221,10 +252,113 @@ private func lineNode(from: SCNVector3, to: SCNVector3, color: NSColor) -> SCNNo
 // MARK: – Coordinator
 class Coordinator: NSObject {
     var parent: GeometryView
+    /// Cached geometry from the last scene build.  Used to avoid unnecessary
+    /// rebuilds when only the selection changes.
+    var lastGeometry: [GeometrySegment]?
+
     init(_ parent: GeometryView) {
         self.parent = parent
     }
-    
+
+    /// Apply highlight colours to nodes based on the current selection.  This
+    /// is called when the scene is being reused.
+    ///
+    /// The cards are grandchildren of the root node (they live inside the
+    /// `container` node), so we must traverse the entire hierarchy rather than
+    /// only inspecting `rootNode.childNodes`.
+    ///
+    /// Handles for the selected segment are also created/removed here.
+    func applySelectionHighlight(to scnView: SCNView, selected: Int?) {
+        guard let scene = scnView.scene else { return }
+
+        // update segment colours
+        scene.rootNode.enumerateChildNodes { node, _ in
+            guard let name = node.name else { return }
+            if name.hasPrefix("card_") {
+                if let idx = Int(name.dropFirst("card_".count)) {
+                    node.geometry?.firstMaterial?.diffuse.contents = (idx == selected) ? NSColor.systemYellow : NSColor.darkGray
+                }
+            }
+        }
+
+        // remove any previous handles
+        scene.rootNode.enumerateChildNodes { node, _ in
+            if let name = node.name, name.hasPrefix("handle_") {
+                node.removeFromParentNode()
+            }
+        }
+
+        // add new handles if we have a valid selection and geometry data
+        guard let sel = selected, let geom = lastGeometry else { return }
+        let cardSegs = geom.filter { $0.cardIndex == sel }
+        guard !cardSegs.isEmpty else { return }
+
+        // currently only line segments exist; other types will be handled
+        // in future phases.
+        addLineHandles(to: scene, cardSegments: cardSegs)
+    }
+
+    /// Add three spherical handles for a wire: green at the first end,
+    /// cyan at the midpoint, and red at the far end.
+    /// `cardSegments` must be all NEC sub-segments belonging to the same card,
+    /// ordered so that `cardSegments.first` starts at the wire's first endpoint
+    /// and `cardSegments.last` ends at its second endpoint.
+    private func addLineHandles(to scene: SCNScene, cardSegments: [GeometrySegment]) {
+        guard let first = cardSegments.first, let last = cardSegments.last else { return }
+        let start = SCNVector3(first.start.x,
+                               first.start.y,
+                               first.start.z)
+        let end   = SCNVector3(last.end.x,
+                               last.end.y,
+                               last.end.z)
+        let mid = SCNVector3((start.x + end.x) / 2,
+                             (start.y + end.y) / 2,
+                             (start.z + end.z) / 2)
+
+        // compute handle radius using the same formula as the wire cylinder,
+        // then scale up to 1.5× the wire radius so handles are clearly visible.
+        // Use the full wire length (start→end) for the radius calculation.
+        let dx = end.x - start.x
+        let dy = end.y - start.y
+        let dz = end.z - start.z
+        let segLen = CGFloat(sqrt(dx*dx + dy*dy + dz*dz))
+        let globalScale = CGFloat(parent.radiusScale)
+        var wireRadius = max(segLen * 0.002 * globalScale, 0.002 * globalScale)
+        if parent.exaggerateDiameters {
+            let threshold = segLen * 0.02 * globalScale
+            if wireRadius < threshold { wireRadius *= 5 }
+        }
+        let radius = wireRadius * 0.85
+        func sphere(color: NSColor, name: String) -> SCNNode {
+            let sph = SCNSphere(radius: radius)
+            sph.firstMaterial?.diffuse.contents = color
+            let node = SCNNode(geometry: sph)
+            node.name = "handle_\(name)"
+            return node
+        }
+
+        let h1 = sphere(color: .systemGreen, name: "start")
+        h1.position = start
+        let h2 = sphere(color: .systemTeal, name: "mid")
+        h2.position = mid
+        let h3 = sphere(color: .systemRed, name: "end")
+        h3.position = end
+
+        // add handles to the same container that holds the segment geometry
+        // so they inherit the centering/scale transform applied during scene
+        // construction.
+        if let container = scene.rootNode.childNode(withName: "geometryContainer", recursively: true) {
+            container.addChildNode(h1)
+            container.addChildNode(h2)
+            container.addChildNode(h3)
+        } else {
+            // fallback – shouldn't happen, but avoid dropping handles entirely
+            scene.rootNode.addChildNode(h1)
+            scene.rootNode.addChildNode(h2)
+            scene.rootNode.addChildNode(h3)
+        }
+    }
+
     @objc func handleClick(_ gesture: NSClickGestureRecognizer) {
         guard let scnView = gesture.view as? SCNView else { return }
         let loc = gesture.location(in: scnView)

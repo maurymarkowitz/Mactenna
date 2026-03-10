@@ -11,7 +11,7 @@ import UniformTypeIdentifiers
 
 extension UTType {
     /// NEC antenna deck file (.nec / .deck).
-    static let necDeck = UTType(importedAs: "net.maury.mactenna.nec-deck")
+    nonisolated static let necDeck = UTType(importedAs: "net.maury.mactenna.nec-deck")
 }
 
 nonisolated struct MactennaDocument: FileDocument {
@@ -25,8 +25,8 @@ nonisolated struct MactennaDocument: FileDocument {
 
     // MARK: – FileDocument conformance
 
-    static let readableContentTypes: [UTType] = [.necDeck, .plainText]
-    static let writableContentTypes: [UTType] = [.necDeck]
+    nonisolated static let readableContentTypes: [UTType] = [.necDeck, .plainText]
+    nonisolated static let writableContentTypes: [UTType] = [.necDeck]
 
     // MARK: – Init
 

@@ -41,7 +41,13 @@ struct ContentView: View {
             // ── Deck editor pane ──────────────────────────────────────────
             DeckTableView(deck: deck,
                           selectedIndex: $selectedIndex,
-                          onCommitEdit: handleCellEdit)
+                          onCommitEdit: handleCellEdit,
+                          onMove: { src, dst, snapshot in
+                              undoManager?.registerUndo(withTarget: deck) { d in
+                                  d.restore(text: snapshot)
+                              }
+                              undoManager?.setActionName("Move Card")
+                          })
                 .frame(minWidth: 600)
 
             // ── Results pane ──────────────────────────────────────────────
