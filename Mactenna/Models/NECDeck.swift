@@ -220,6 +220,16 @@ final class NECDeck: ObservableObject {
         return types
     }
 
+    /// Returns true if `rowIndex` falls within the geometry section of the deck.
+    func isInGeometrySection(row rowIndex: Int) -> Bool {
+        guard let dp = deckPtr else { return false }
+        let d = dp.pointee
+        let geoStart = Int(d.geometry_start)
+        let geoEnd   = Int(d.geometry_end)
+        guard geoStart >= 0, geoEnd >= 0 else { return false }
+        return rowIndex >= geoStart && rowIndex <= geoEnd
+    }
+
     /// Build a DeckRow display proxy for the card at `index`.
     /// Returns nil if the index is out of range.
     func card(at index: Int) -> DeckRow? {

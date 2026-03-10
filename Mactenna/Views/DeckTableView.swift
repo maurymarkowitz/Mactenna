@@ -401,7 +401,9 @@ struct DeckTableView: NSViewRepresentable {
                 }
                 button.tag = row
                 button.state = deckRow.isInvisible ? .on : .off
-                button.isEnabled = true
+                let inGeo = deck.isInGeometrySection(row: row)
+                button.isHidden = !inGeo
+                button.isEnabled = inGeo
                 return button
             }
             if colID == "rownum" {
