@@ -27,6 +27,10 @@ struct ResultsView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // debug: monitor selection
+            EmptyView().onChange(of: selectedIndex) { new in
+                // selection change monitored for debugging previously
+            }
             if isRunning {
                 runningPlaceholder
             } else if let result {
@@ -210,7 +214,10 @@ struct ResultsView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 GeometryView(geometry: geomSegments,
-                             selectedCard: $selectedIndex)
+                             selectedCard: selectedIndex,
+                             onSelect: { new in
+                                 selectedIndex = new
+                             })
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
