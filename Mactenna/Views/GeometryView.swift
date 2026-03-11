@@ -155,7 +155,8 @@ fileprivate final class ZoomableSCNView: SCNView {
     }
 
     func hideOverlay() {
-        overlayLabels.forEach { $0.removeFromParent() }
+        guard let sk = overlayScene else { return }
+        sk.removeAllChildren()
         overlayLabels.removeAll()
     }
 }
@@ -1208,10 +1209,6 @@ class Coordinator: NSObject, GeometryViewDragDelegate, SCNSceneRendererDelegate 
     }
 
     func mouseDown(at point: NSPoint, in view: SCNView) {
-        // debug: show fixed overlay to confirm overlay system working
-        if let zv = view as? ZoomableSCNView {
-            zv.showOverlay(text: "DEBUG start", at: CGPoint(x: view.bounds.midX, y: view.bounds.midY))
-        }
         // ensure camera is being tracked continuously while interacting
         view.delegate = self
         // hide any previous overlay text
@@ -1298,10 +1295,6 @@ class Coordinator: NSObject, GeometryViewDragDelegate, SCNSceneRendererDelegate 
                                in: view)
     }
     func mouseUp(at point: NSPoint, in view: SCNView) {
-        // debug: show overlay on mouseUp briefly
-        if let zv = view as? ZoomableSCNView {
-            zv.showOverlay(text: "DEBUG end", at: CGPoint(x: view.bounds.midX, y: view.bounds.midY))
-        }
         // hide overlay when drag finishes
         if let zv = view as? ZoomableSCNView { zv.hideOverlay() }
         // stop tracking when drag ends; normal camera moves still tracked via delegate

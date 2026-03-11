@@ -94,7 +94,7 @@ When the user releases the mouse while snapped, the coordinate is set to the *ex
 - **SCNText nodes** positioned in screen-space (billboarded to camera) near the relevant handle.
 - **Update every frame** during drag (via `SCNSceneRendererDelegate.renderer(_:updateAtTime:)`).
 - **Units**: Match the deck's coordinate system (metres by default; future: wavelengths toggle).
-- **Numeric input**: While dragging, the user can type a number to set the exact value (shown in a small text field overlay). Press Enter to confirm, Escape to cancel.
+- **Numeric input**: _not required_ — users may enter values via the table instead.
 
 ---
 
@@ -218,10 +218,11 @@ GW is the simplest and most common — implement it first and use it as the temp
 ### Phase E: Live Dimensioning (*depends on B, parallel with C and D*)
 1. Added live drag overlay in `GeometryView.Coordinator` using billboarded `SCNText` ✅
 2. Overlay now updates continuously during drag events (`mouseDragged`) ✅
-   • switched to screen-space `NSTextField` overlay in `ZoomableSCNView` for
-     guaranteed visibility; coordinates obtained via `projectPoint`.
+   • switched to screen-space SpriteKit overlay via `overlaySKScene` for
+     guaranteed visibility; coordinates obtained via `projectPoint`.  scene
+     children are now fully cleared on update to avoid artifacts.
 3. Overlay shows delta distance, world coordinates, GW wire length and rotation angle; snap state label included ✅
-4. Numeric input: on key press during drag, show small `NSTextField` overlay; Enter confirms exact value ✏️
+4. Numeric input is not needed; users can edit values in the table instead. ✔️
 5. Camera transform is persisted in a `@Binding` from ResultsView and tracked via `SCNSceneRendererDelegate`; eliminates snapping on rebuilds ✅
 6. **Files**: GeometryView.swift, ResultsView.swift
 
