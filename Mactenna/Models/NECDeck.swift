@@ -458,10 +458,60 @@ final class NECDeck: ObservableObject {
               field >= 1, field <= 7,
               let cards = deck_cards(deckPtr) else { return }
         var card = cards[row]
+        // card.f is a fixed-size tuple; extract the appropriate element manually.
+        let before: Double
+        switch field {
+        case 1: before = card.f.1
+        case 2: before = card.f.2
+        case 3: before = card.f.3
+        case 4: before = card.f.4
+        case 5: before = card.f.5
+        case 6: before = card.f.6
+        case 7: before = card.f.7
+        default: before = 0
+        }
+        print("[NECDeck] setFloatField row=\(row) field=\(field) from \(before) to \(value)")
         withUnsafeMutableBytes(of: &card.f) { raw in
             raw.storeBytes(of: value,
                            toByteOffset: field * MemoryLayout<Double>.stride,
                            as: Double.self)
+        }
+        card.edited = true
+        cards[row] = card
+        invalidate(forEditAt: row)
+        editGeneration &+= 1
+        objectWillChange.send()
+        autoRecalcIfAppropriate()
+    }
+
+    /// Write multiple float fields in one atomic operation.  Values are
+    /// provided as (fieldNumber,value) pairs.  This avoids repeated
+    /// auto-recalc and ensures none of the writes are skipped.
+    func setFloatFields(row: Int, _ pairs: [(Int, Double)]) {
+        guard !isRunning else { return }
+        guard let deckPtr,
+              row   >= 0, row   < Int(deck_num_cards(deckPtr)),
+              let cards = deck_cards(deckPtr) else { return }
+        var card = cards[row]
+        for (field, value) in pairs {
+            guard field >= 1, field <= 7 else { continue }
+            let before: Double
+            switch field {
+            case 1: before = card.f.1
+            case 2: before = card.f.2
+            case 3: before = card.f.3
+            case 4: before = card.f.4
+            case 5: before = card.f.5
+            case 6: before = card.f.6
+            case 7: before = card.f.7
+            default: before = 0
+            }
+            print("[NECDeck] setFloatFields row=\(row) field=\(field) from \(before) to \(value)")
+            withUnsafeMutableBytes(of: &card.f) { raw in
+                raw.storeBytes(of: value,
+                               toByteOffset: field * MemoryLayout<Double>.stride,
+                               as: Double.self)
+            }
         }
         card.edited = true
         cards[row] = card

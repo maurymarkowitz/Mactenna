@@ -44,7 +44,7 @@ Expand GeometryView from a read-only viewer into a full interactive geometry edi
 
 | Key | Action |
 |-----|--------|
-| **Escape** | Cancel in-progress drag; revert to pre-drag state |
+| **Escape** | Cancel in-progress drag; revert to pre-drag state ✅ |
 | **Enter / Return** | Confirm drag (same as mouse-up) |
 | **Delete / Backspace** | Delete selected card (with undo) |
 | **Tab** | Cycle selection to next geometry card |
@@ -127,7 +127,7 @@ Handles are interactive objects that need individual transforms during drag — 
 - **`DragState`** — enum tracking the current interaction:
   ```
   case idle
-  case dragging(handle: HandleID, startWorldPos: SIMD3<Float>, 
+  case dragging(handle: HandleID, startWorldPos: SIMD3<Float>,
                 currentWorldPos: SIMD3<Float>, constraint: DragConstraint,
                 preEditSnapshot: String)
   ```
@@ -182,43 +182,48 @@ GW is the simplest and most common — implement it first and use it as the temp
 6. Verify visual parity with current per-node rendering
 7. **Files**: GeometryView.swift
 
+- Initial camera framing now uses the original simple rule `max(geoRadius * 3, 5)`.
+      More elaborate adjustments proved too aggressive; the earlier math was
+      preferable despite its occasional closeness.
+
 ### Phase B: Drag Infrastructure (*depends on A*)
 1. Replace `NSClickGestureRecognizer` with combined click + drag handling via `mouseDown`/`mouseDragged`/`mouseUp` overrides on `ZoomableSCNView`
 2. Add `DragState` to Coordinator
 3. On mouse-down on a handle node: begin drag, capture `preEditSnapshot`
 4. On mouse-drag: project screen delta to 3D constraint, update handle position
-5. On mouse-up: commit edit (compute new field values, call setters, register undo)
+5. On mouse-up: commit edit (compute new field values, call setters, register undo). Use the node’s final world position rather than requiring the mouse hit the geometry, so drags ending off‑object still apply ✅
 6. Ensure deck edits trigger table view reload — subscribe to editGeneration or post notification
-6. On Escape during drag: revert handle position, discard
+6. On Escape during drag: revert handle position, discard ✅
 7. **Files**: GeometryView.swift
 
 ### Phase C: Constraint System (*depends on B*)
-1. Implement `DragConstraint` enum and projection math:
-   - `.axial`: project mouse delta onto wire direction vector
-   - `.worldAxis`: project onto X, Y, or Z
-   - `.worldPlane`: project onto plane perpendicular to axis
-   - `.free`: unproject screen point to plane through handle parallel to camera
-   - `.rotation`: project onto circle
-2. Default constraint selection based on card type + handle
-3. Monitor modifier keys (`NSEvent.modifierFlags`) during drag to switch constraints
-4. Monitor key presses (X/Y/Z) during drag via `keyDown` override
-5. Constraint guide visualization (dashed lines, translucent planes, rotation rings)
-6. **Files**: GeometryView.swift
+1. Implemented `DragConstraint` enum and projection math for axial, world axis/plane, free and rotation cases ✅
+   - New `Axis` type and constraint computation live in `Coordinator`.
+   - Projections applied in `mouseDragged(at:in:)` with proper 3‑D math.
+2. Default constraint selection now honours card type + handle (GW start/end axial, mid free) ✅
+3. Modifier keys are monitored via keyDown/keyUp and `NSEvent.modifierFlags`; Option gives free, Command enters rotation, Shift enables precision and plane locking ✅
+4. Added worldMidpointFor helper; fixed ambiguous operator issue when computing midpoints ✅
+4. Letter keys X/Y/Z lock to world axes (hold Shift for plane) via key event tracking ✅
+5. **Guide visualization** partially done: axial/world-axis/plane guides now appear as lines/planes; rotation ring remains to implement ✏️
+6. **Files**: GeometryView.swift (Coordinator expanded)
 
 ### Phase D: Snap / Inference System (*depends on B, parallel with C*)
-1. Build spatial index of all geometry endpoints at drag start
-2. During drag: test proximity of dragged position against all snap targets
-3. Compute screen-space distance for threshold (camera-aware)
-4. Show snap indicator nodes (cyan/magenta spheres on target, guide lines)
-5. On mouse-up while snapped: use exact snap coordinate
+1. Build spatial index of all geometry endpoints/midpoints at drag start ✅
+2. During drag: test proximity of dragged position against targets; override position when within threshold ✅
+3. Threshold currently fixed (≈0.02 m); future improvement: convert to screen-space 🛠
+4. Show snap indicator spheres at target location (cyan deep for endpoint, magenta for midpoint) ✅
+5. On mouse-up while snapped: use exact snap coordinate (already inherent) ✅
 6. **Files**: GeometryView.swift
 
 ### Phase E: Live Dimensioning (*depends on B, parallel with C and D*)
-1. Create `DimensionOverlay` manager that owns `SCNText`/`SCNBillboardConstraint` nodes
-2. Update overlay every frame during drag via `SCNSceneRendererDelegate`
-3. Show wire length, delta, coordinates, angle (as applicable)
-4. Numeric input: on key press during drag, show small `NSTextField` overlay; Enter confirms exact value
-5. **Files**: GeometryView.swift
+1. Added live drag overlay in `GeometryView.Coordinator` using billboarded `SCNText` ✅
+2. Overlay now updates continuously during drag events (`mouseDragged`) ✅
+   • switched to screen-space `NSTextField` overlay in `ZoomableSCNView` for
+     guaranteed visibility; coordinates obtained via `projectPoint`.
+3. Overlay shows delta distance, world coordinates, GW wire length and rotation angle; snap state label included ✅
+4. Numeric input: on key press during drag, show small `NSTextField` overlay; Enter confirms exact value ✏️
+5. Camera transform is persisted in a `@Binding` from ResultsView and tracked via `SCNSceneRendererDelegate`; eliminates snapping on rebuilds ✅
+6. **Files**: GeometryView.swift, ResultsView.swift
 
 ### Phase F: GW Write-Back (*depends on B*)
 1. When drag completes on a GW handle: read new start/end positions from handle nodes
@@ -226,7 +231,7 @@ GW is the simplest and most common — implement it first and use it as the temp
 3. Map to F1-F6 fields on the card
 4. Call `deck.setFloatField(row:field:value:)` for each changed field
 5. Register undo with pre-drag snapshot
-6. Trigger `autoRecalcIfAppropriate()` if enabled
+6. Trigger `autoRecalcIfAppropriate()` if enabled; when writing multiple fields disable auto-recalc temporarily to avoid early run ✅
 7. **Files**: GeometryView.swift, NECDeck.swift
 
 ### Phase G: Other Card Types (*depends on F*)

@@ -204,9 +204,10 @@ struct DeckTableView: NSViewRepresentable {
         // don't reload while the user is actively editing; doing so will
         // terminate the editor and make it impossible to type.  `currentEditor`
         // returns the field editor if one is active.
-        if tableView.currentEditor() == nil {
-            tableView.reloadData()
-        }
+        // always reload data when updateNSView is invoked; doing so while
+        // editing can terminate the editor but drag commits shouldn’t happen
+        // during an active text edit anyway.
+        tableView.reloadData()
 
         // Refresh column headers for the current selection.
         if let idx = selectedIndex, let row = deck.card(at: idx) {
@@ -278,9 +279,10 @@ struct DeckTableView: NSViewRepresentable {
             // relying solely on SwiftUI’s updateNSView timing.
             deck.$editGeneration
                 .receive(on: RunLoop.main)
-                .sink { [weak self] _ in
-                    guard let tv = self?.tableView,
-                          tv.currentEditor() == nil else { return }
+                .sink { [weak self] newGen in
+                    print("[DeckTableView] editGeneration changed to \(newGen)")
+                    guard let tv = self?.tableView else { return }
+                    // always reload so external changes (e.g. drags) are visible
                     tv.reloadData()
                 }
                 .store(in: &cancellables)
@@ -293,6 +295,7 @@ struct DeckTableView: NSViewRepresentable {
         }
 
         @objc private func deckDidEditNotification(_ note: Notification) {
+            print("[DeckTableView] received DeckDidEdit notification")
             tableView?.reloadData()
         }
 
@@ -681,7 +684,12 @@ struct DeckTableView: NSViewRepresentable {
             guard let tv = notification.object as? NSTableView else { return }
             let idx = tv.selectedRow
             let newSel = idx >= 0 && idx < deck.cardCount ? idx : nil
-            selectedIndex.wrappedValue = newSel
+            // changing a SwiftUI binding during an AppKit delegate callback
+            // can trigger "modifying state during view update" warnings.  Use
+            // async dispatch to defer until the current runloop turn completes.
+            DispatchQueue.main.async {
+                self.selectedIndex.wrappedValue = newSel
+            }
             if let sel = newSel, let row = deck.card(at: sel) {
                 updateColumnHeaders(for: row.cardType)
             } else {
