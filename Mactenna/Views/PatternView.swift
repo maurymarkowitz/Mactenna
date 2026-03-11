@@ -269,7 +269,7 @@ struct PatternView: NSViewRepresentable {
                     return sqrt(dx*dx + dy*dy + dz*dz)
                 }.max() ?? 0
             }
-            let patRadius = radius(from: patternMin, to: patternMax, center: patCenter)
+            let _ = radius(from: patternMin, to: patternMax, center: patCenter)
             // no external scaling for now
 
             // create container and position children relative to its centre

@@ -889,7 +889,7 @@ final class NECDeck: ObservableObject {
     /// solved context.  Segments belonging to ignored or invisible cards are
     /// omitted.
     func geometrySegments() -> [GeometrySegment] {
-        guard let ctx = solvedCtx, let deckPtr = deckPtr else { return [] }
+        guard let ctx = solvedCtx else { return [] }
         let n = nec_geometry_num_segs(ctx)
         var segs: [GeometrySegment] = []
         segs.reserveCapacity(Int(n))

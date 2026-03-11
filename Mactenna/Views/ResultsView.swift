@@ -33,7 +33,7 @@ struct ResultsView: View {
     var body: some View {
         VStack(spacing: 0) {
             // debug: monitor selection
-            EmptyView().onChange(of: selectedIndex) { new in
+            EmptyView().onChange(of: selectedIndex) {
                 // selection change monitored for debugging previously
             }
             if isRunning {
@@ -154,8 +154,7 @@ struct ResultsView: View {
         let maxG: Double = pts.map { $0.gain }.max() ?? result.patternMaxGain
         let minG: Double = pts.map { $0.gain }.min() ?? 0
 
-
-
+        // compose view with overlays
         return ZStack {
             if pts.isEmpty {
                 VStack(spacing: 8) {
@@ -173,26 +172,26 @@ struct ResultsView: View {
                 PatternView(points: pts, maxGain: maxG)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-        }
 
-        // legend overlay (only when we actually have points)
-        if !pts.isEmpty {
-            VStack {
-                Spacer()
-                GainLegend(minGain: minG, maxGain: maxG)
-                    .padding(8)
-                    .background(Color(.windowBackgroundColor).opacity(0.7))
-                    .cornerRadius(6)
-                    .padding(8)
+            // legend overlay (only when we actually have points)
+            if !pts.isEmpty {
+                VStack {
+                    Spacer()
+                    GainLegend(minGain: minG, maxGain: maxG)
+                        .padding(8)
+                        .background(Color(.windowBackgroundColor).opacity(0.7))
+                        .cornerRadius(6)
+                        .padding(8)
+                }
             }
-        }
 
-        if isComputingPattern {
-            ProgressView("Computing pattern…")
-                .progressViewStyle(CircularProgressViewStyle())
-                .padding(8)
-                .background(Color(.windowBackgroundColor).opacity(0.8))
-                .cornerRadius(8)
+            if isComputingPattern {
+                ProgressView("Computing pattern…")
+                    .progressViewStyle(CircularProgressViewStyle())
+                    .padding(8)
+                    .background(Color(.windowBackgroundColor).opacity(0.8))
+                    .cornerRadius(8)
+            }
         }
     }
 

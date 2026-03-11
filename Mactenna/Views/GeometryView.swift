@@ -699,7 +699,7 @@ class Coordinator: NSObject, GeometryViewDragDelegate, SCNSceneRendererDelegate 
     func keyDown(_ event: NSEvent) {
         // allow Escape to cancel an active drag
         if event.keyCode == 53 { // ESC
-            if case .dragging(let hid, let node, let start, _) = dragState {
+            if case .dragging(_, let node, let start, _) = dragState {
                 node.worldPosition = start
                 dragState = .idle
                 clearGuide()
@@ -853,7 +853,7 @@ class Coordinator: NSObject, GeometryViewDragDelegate, SCNSceneRendererDelegate 
         }
         // try without mask to see if any geometry is hit at all
         let allHits = scnView.hitTest(loc, options: nil)
-        for hit in allHits {
+        for _ in allHits {
         }
         DispatchQueue.main.async {
             self.parent.onSelect(nil)
