@@ -7,10 +7,15 @@ import SwiftUI
 
 struct SmithChartView: View {
     let impedances: [(zr: [Float], zi: [Float])]
-    var swrValue: Float = 2.0  // SWR for the circle overlay
+    var frequency: Float = 146.5  // Test frequency in MHz
+
+    @State private var swrValue: Float = 2.0  // SWR for the circle overlay
+    @State private var z0Reference: Float = 50.0  // Reference impedance
 
     private let chartRadius: CGFloat = 225
     private let margin: CGFloat = 60
+    
+    @State private var selectedPointIndex: Int = 0
 
     // Grid region tables (from cocoaNEC)
     private let zRegions:  [Float] = [0, 0.2, 0.5, 1, 2, 5, 10, 20, 50]
@@ -148,6 +153,127 @@ struct SmithChartView: View {
         context.stroke(swrPath, with: .color(.red.opacity(0.5)), lineWidth: 1.0)
     }
 
+    // MARK: - Impedance data plotting
+
+    private func drawImpedanceData(_ context: inout GraphicsContext, center: CGPoint) {
+        let z0: Float = 50.0  // Reference impedance
+        
+        for (feedpointIndex, impedanceData) in impedances.enumerated() {
+            var pathPoints: [CGPoint] = []
+            
+            // Convert impedance points to Smith chart coordinates
+            for i in 0..<impedanceData.zr.count {
+                let zr = impedanceData.zr[i]
+                let zi = impedanceData.zi[i]
+                
+                // Normalize by Z0
+                let r = zr / z0
+                let x = zi / z0
+                
+                let (u, v) = rxToUVf(r: r, x: x)
+                let xCoord = center.x + CGFloat(u) * chartRadius
+                let yCoord = center.y - CGFloat(v) * chartRadius
+                pathPoints.append(CGPoint(x: xCoord, y: yCoord))
+            }
+            
+            // Draw line connecting points
+            if pathPoints.count > 1 {
+                var dataPath = Path()
+                dataPath.move(to: pathPoints[0])
+                for i in 1..<pathPoints.count {
+                    dataPath.addLine(to: pathPoints[i])
+                }
+                context.stroke(dataPath, with: .color(.green), lineWidth: 2.0)
+            }
+            
+            // Draw dots at each point
+            for (index, point) in pathPoints.enumerated() {
+                if index == 0 {
+                    // First point: draw as a ring
+                    var ringPath = Path()
+                    ringPath.addEllipse(in: CGRect(x: point.x - 5, y: point.y - 5, width: 10, height: 10))
+                    context.stroke(ringPath, with: .color(.green), lineWidth: 3.0)
+                } else {
+                    // Other points: solid dots
+                    context.fill(
+                        Path(ellipseIn: CGRect(x: point.x - 5, y: point.y - 5, width: 10, height: 10)),
+                        with: .color(.green)
+                    )
+                }
+            }
+        }
+    }
+
+    // MARK: - VSWR Calculation
+
+    private func calculateVSWR(zr: Float, zi: Float) -> Float {
+        let z0: Float = 50.0
+        
+        // Normalize impedance
+        let r = zr / z0
+        let x = zi / z0
+        
+        // Calculate reflection coefficient magnitude
+        let num_real = r * r + x * x - 1
+        let num_imag = 2 * x
+        let denom = r * r + x * x + 2 * r + 1
+        
+        let rho_real = num_real / denom
+        let rho_imag = num_imag / denom
+        let rho_mag = sqrt(rho_real * rho_real + rho_imag * rho_imag)
+        
+        // Calculate VSWR
+        if rho_mag > 0.99 {
+            return 99.0
+        }
+        return (1 + rho_mag) / (1 - rho_mag)
+    }
+
+    // MARK: - Legend View
+
+    private func createLegendView() -> some View {
+        return VStack(alignment: .leading, spacing: 8) {
+            // Frequency line with indicator
+            HStack(spacing: 12) {
+                VStack(spacing: 2) {
+                    Circle()
+                        .fill(Color.green)
+                        .frame(width: 8, height: 8)
+                    Circle()
+                        .stroke(Color.green, lineWidth: 2)
+                        .frame(width: 12, height: 12)
+                }
+                .frame(width: 15, height: 15)
+                
+                Text(String(format: "Frequency: %.3f MHz", frequency))
+                    .font(.system(size: 10, weight: .regular, design: .monospaced))
+                    .foregroundColor(.secondary)
+            }
+
+            // Impedance and VSWR line
+            HStack {
+                if impedances.count > 0 && impedances[0].zr.count > 0 {
+                    let zr = impedances[0].zr[selectedPointIndex]
+                    let zi = impedances[0].zi[selectedPointIndex]
+                    let vswr = calculateVSWR(zr: zr, zi: zi)
+                    
+                    let ziSign = zi >= 0 ? "+" : "-"
+                    let ziAbs = abs(zi)
+                    
+                    Text("Z = \(String(format: "%.1f", zr)) \(ziSign) i \(String(format: "%.1f", ziAbs)) Ω (VSWR \(String(format: "%.2f", vswr)) : 1)")
+                        .font(.system(size: 10, weight: .regular, design: .monospaced))
+                        .foregroundColor(.secondary)
+                } else {
+                    Text("No impedance data")
+                        .font(.system(size: 10, weight: .regular, design: .monospaced))
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+        .padding(12)
+        .background(Color(nsColor: .controlBackgroundColor))
+    }
+
     private func drawSmithChartBackground(_ context: inout GraphicsContext, center: CGPoint) {
         // Create circular clipping path
         var clipPath = Path()
@@ -230,9 +356,14 @@ struct SmithChartView: View {
 
                 // Draw SWR circle on top (after background)
                 drawSWRCircle(&context, center: center)
+                
+                // Draw impedance data
+                drawImpedanceData(&context, center: center)
             }
             .frame(height: chartRadius * 2 + margin * 2)
             .background(Color(nsColor: .controlBackgroundColor))
+
+            createLegendView()
 
             Text("\(impedances.count) inputs")
                 .font(.caption)
@@ -244,8 +375,16 @@ struct SmithChartView: View {
 #Preview {
     SmithChartView(
         impedances: [
-            (zr: [50], zi: [0])
+            (
+                zr: [50, 45, 40, 35, 30, 25],
+                zi: [0, 5, 10, 15, 20, 25]
+            ),
+            (
+                zr: [60, 55, 50, 45],
+                zi: [-5, -10, -15, -20]
+            )
         ],
-        swrValue: 2.0
+        swrValue: 2.0,
+        frequency: 146.5
     )
 }
