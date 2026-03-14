@@ -139,7 +139,7 @@ struct SmithChartView: View {
     private func drawSWRCircle(_ context: inout GraphicsContext, center: CGPoint) {
         let r = (swrValue - 1) / (swrValue + 1)
         let radius = CGFloat(r) * chartRadius
-        
+
         var swrPath = Path()
         swrPath.addEllipse(in: CGRect(
             x: center.x - radius, y: center.y - radius,
@@ -227,7 +227,7 @@ struct SmithChartView: View {
 
                 // Draw Smith chart background with grid
                 drawSmithChartBackground(&context, center: center)
-                
+
                 // Draw SWR circle on top (after background)
                 drawSWRCircle(&context, center: center)
             }
