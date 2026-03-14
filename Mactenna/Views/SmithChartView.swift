@@ -113,7 +113,7 @@ struct SmithChartView: View {
         let y = center.y
 
         // Position label horizontally on the real axis
-        var resolvedImage = context.resolve(
+        let resolvedImage = context.resolve(
             Text(label)
                 .font(.system(size: 8, weight: .regular, design: .default))
                 .foregroundColor(.gray)
@@ -131,7 +131,7 @@ struct SmithChartView: View {
         let labelX = center.x + CGFloat(u) * radiusScale
         let labelY = center.y - CGFloat(v) * radiusScale
 
-        var resolvedImage = context.resolve(
+        let resolvedImage = context.resolve(
             Text(label)
                 .font(.system(size: 8, weight: .regular, design: .default))
                 .foregroundColor(.gray)
@@ -156,7 +156,7 @@ struct SmithChartView: View {
     // MARK: - Impedance data plotting
 
     private func drawImpedanceData(_ context: inout GraphicsContext, center: CGPoint) {
-        for (feedpointIndex, impedanceData) in impedances.enumerated() {
+        for (_, impedanceData) in impedances.enumerated() {
             var pathPoints: [CGPoint] = []
 
             // Convert impedance points to Smith chart coordinates
@@ -223,51 +223,6 @@ struct SmithChartView: View {
             return 99.0
         }
         return (1 + rho_mag) / (1 - rho_mag)
-    }
-
-    // MARK: - Legend View
-
-    private func createLegendView() -> some View {
-        return VStack(alignment: .leading, spacing: 8) {
-            // Frequency line with indicator
-            HStack(spacing: 12) {
-                VStack(spacing: 2) {
-                    Circle()
-                        .fill(Color.green)
-                        .frame(width: 8, height: 8)
-                    Circle()
-                        .stroke(Color.green, lineWidth: 2)
-                        .frame(width: 12, height: 12)
-                }
-                .frame(width: 15, height: 15)
-
-                Text(String(format: "Frequency: %.3f MHz", frequency))
-                    .font(.system(size: 10, weight: .regular, design: .monospaced))
-                    .foregroundColor(.secondary)
-            }
-
-            // Impedance and VSWR line
-            HStack {
-                if impedances.count > 0 && impedances[0].zr.count > 0 {
-                    let zr = impedances[0].zr[selectedPointIndex]
-                    let zi = impedances[0].zi[selectedPointIndex]
-                    let vswr = calculateVSWR(zr: zr, zi: zi)
-
-                    let ziSign = zi >= 0 ? "+" : "-"
-                    let ziAbs = abs(zi)
-
-                    Text("Z = \(String(format: "%.1f", zr)) \(ziSign) i \(String(format: "%.1f", ziAbs)) Ω (VSWR \(String(format: "%.2f", vswr)) : 1)")
-                        .font(.system(size: 10, weight: .regular, design: .monospaced))
-                        .foregroundColor(.secondary)
-                } else {
-                    Text("No impedance data")
-                        .font(.system(size: 10, weight: .regular, design: .monospaced))
-                        .foregroundColor(.secondary)
-                }
-            }
-        }
-        .padding(12)
-        .background(Color(nsColor: .controlBackgroundColor))
     }
 
     private func drawSmithChartBackground(_ context: inout GraphicsContext, center: CGPoint) {
@@ -359,10 +314,41 @@ struct SmithChartView: View {
             .frame(height: chartRadius * 2 + margin * 2)
             .background(Color(nsColor: .controlBackgroundColor))
 
-            createLegendView()
+            // Info and Controls Section
+            VStack(alignment: .leading, spacing: 12) {
+                // Frequency line with indicator
+                HStack(spacing: 12) {
+                    Circle()
+                        .stroke(Color.green, lineWidth: 2)
+                        .frame(width: 12, height: 12)
 
-            // Controls for SWR and Z0
-            VStack(alignment: .leading, spacing: 8) {
+                    Text(String(format: "Frequency: %.3f MHz", frequency))
+                        .font(.system(size: 10, weight: .regular, design: .monospaced))
+                        .foregroundColor(.secondary)
+                }
+
+                // Impedance and VSWR line
+                HStack {
+                    if impedances.count > 0 && impedances[0].zr.count > 0 {
+                        let zr = impedances[0].zr[selectedPointIndex]
+                        let zi = impedances[0].zi[selectedPointIndex]
+                        let vswr = calculateVSWR(zr: zr, zi: zi)
+
+                        let ziSign = zi >= 0 ? "+" : "-"
+                        let ziAbs = abs(zi)
+
+                        Text("Z = \(String(format: "%.1f", zr)) \(ziSign) i \(String(format: "%.1f", ziAbs)) Ω (VSWR \(String(format: "%.2f", vswr)) : 1)")
+                            .font(.system(size: 10, weight: .regular, design: .monospaced))
+                            .foregroundColor(.secondary)
+                    } else {
+                        Text("No impedance data")
+                            .font(.system(size: 10, weight: .regular, design: .monospaced))
+                            .foregroundColor(.secondary)
+                    }
+                }
+
+                Divider()
+
                 HStack(spacing: 12) {
                     Text("SWR Circle Radius:")
                         .font(.caption)
@@ -374,23 +360,35 @@ struct SmithChartView: View {
                         .frame(width: 60)
                 }
 
-                HStack(spacing: 12) {
+                HStack(spacing: 8) {
                     Text("Reference Z₀ (Ω):")
                         .font(.caption)
                         .frame(width: 130, alignment: .leading)
 
-                    TextField("50.0", value: $z0Reference, format: .number)
+                    TextField("50", value: $z0Reference, format: .number)
                         .textFieldStyle(.roundedBorder)
                         .font(.caption)
-                        .frame(width: 60)
+                        .frame(width: 50)
+
+                    Menu {
+                        ForEach([50.0, 75.0, 100.0, 150.0, 300.0, 600.0] as [Float], id: \.self) { value in
+                            Button(String(format: "%.0f Ω", value)) {
+                                z0Reference = value
+                            }
+                        }
+                    } label: {
+                        Text("▼")
+                            .font(.caption)
+                    }
+                    .frame(width: 30)
                 }
+
+                Text("\(impedances.count) inputs")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
             .padding(12)
             .background(Color(nsColor: .controlBackgroundColor))
-
-            Text("\(impedances.count) inputs")
-                .font(.caption)
-                .padding()
         }
     }
 }
