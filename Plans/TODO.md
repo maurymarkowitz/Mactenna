@@ -64,7 +64,7 @@ point = (r*cos(angle), r*sin(angle))
    - Font attributes for labels
    - Draw method: pattern → polar plot
 
-3. **Elevation View** 
+3. **Elevation View**
    - Subclass/variant of pattern view
    - Apply elevation transformation
    - Show azimuth in caption
