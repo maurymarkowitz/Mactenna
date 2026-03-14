@@ -14,7 +14,7 @@ struct SmithChartView: View {
 
     private let chartRadius: CGFloat = 225
     private let margin: CGFloat = 60
-    
+
     @State private var selectedPointIndex: Int = 0
 
     // Grid region tables (from cocoaNEC)
@@ -156,8 +156,6 @@ struct SmithChartView: View {
     // MARK: - Impedance data plotting
 
     private func drawImpedanceData(_ context: inout GraphicsContext, center: CGPoint) {
-        let z0: Float = 50.0  // Reference impedance
-        
         for (feedpointIndex, impedanceData) in impedances.enumerated() {
             var pathPoints: [CGPoint] = []
             
@@ -166,16 +164,16 @@ struct SmithChartView: View {
                 let zr = impedanceData.zr[i]
                 let zi = impedanceData.zi[i]
                 
-                // Normalize by Z0
-                let r = zr / z0
-                let x = zi / z0
+                // Normalize by reference Z0
+                let r = zr / z0Reference
+                let x = zi / z0Reference
                 
                 let (u, v) = rxToUVf(r: r, x: x)
                 let xCoord = center.x + CGFloat(u) * chartRadius
                 let yCoord = center.y - CGFloat(v) * chartRadius
                 pathPoints.append(CGPoint(x: xCoord, y: yCoord))
             }
-            
+
             // Draw line connecting points
             if pathPoints.count > 1 {
                 var dataPath = Path()
@@ -185,7 +183,7 @@ struct SmithChartView: View {
                 }
                 context.stroke(dataPath, with: .color(.green), lineWidth: 2.0)
             }
-            
+
             // Draw dots at each point
             for (index, point) in pathPoints.enumerated() {
                 if index == 0 {
@@ -207,21 +205,19 @@ struct SmithChartView: View {
     // MARK: - VSWR Calculation
 
     private func calculateVSWR(zr: Float, zi: Float) -> Float {
-        let z0: Float = 50.0
-        
-        // Normalize impedance
-        let r = zr / z0
-        let x = zi / z0
+        // Normalize impedance by reference Z0
+        let r = zr / z0Reference
+        let x = zi / z0Reference
         
         // Calculate reflection coefficient magnitude
         let num_real = r * r + x * x - 1
         let num_imag = 2 * x
         let denom = r * r + x * x + 2 * r + 1
-        
+
         let rho_real = num_real / denom
         let rho_imag = num_imag / denom
         let rho_mag = sqrt(rho_real * rho_real + rho_imag * rho_imag)
-        
+
         // Calculate VSWR
         if rho_mag > 0.99 {
             return 99.0
@@ -244,7 +240,7 @@ struct SmithChartView: View {
                         .frame(width: 12, height: 12)
                 }
                 .frame(width: 15, height: 15)
-                
+
                 Text(String(format: "Frequency: %.3f MHz", frequency))
                     .font(.system(size: 10, weight: .regular, design: .monospaced))
                     .foregroundColor(.secondary)
@@ -256,10 +252,10 @@ struct SmithChartView: View {
                     let zr = impedances[0].zr[selectedPointIndex]
                     let zi = impedances[0].zi[selectedPointIndex]
                     let vswr = calculateVSWR(zr: zr, zi: zi)
-                    
+
                     let ziSign = zi >= 0 ? "+" : "-"
                     let ziAbs = abs(zi)
-                    
+
                     Text("Z = \(String(format: "%.1f", zr)) \(ziSign) i \(String(format: "%.1f", ziAbs)) Ω (VSWR \(String(format: "%.2f", vswr)) : 1)")
                         .font(.system(size: 10, weight: .regular, design: .monospaced))
                         .foregroundColor(.secondary)
@@ -356,7 +352,7 @@ struct SmithChartView: View {
 
                 // Draw SWR circle on top (after background)
                 drawSWRCircle(&context, center: center)
-                
+
                 // Draw impedance data
                 drawImpedanceData(&context, center: center)
             }
@@ -364,6 +360,33 @@ struct SmithChartView: View {
             .background(Color(nsColor: .controlBackgroundColor))
 
             createLegendView()
+
+            // Controls for SWR and Z0
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 12) {
+                    Text("SWR Circle Radius:")
+                        .font(.caption)
+                        .frame(width: 130, alignment: .leading)
+                    
+                    TextField("2.0", value: $swrValue, format: .number)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.caption)
+                        .frame(width: 60)
+                }
+                
+                HStack(spacing: 12) {
+                    Text("Reference Z₀ (Ω):")
+                        .font(.caption)
+                        .frame(width: 130, alignment: .leading)
+                    
+                    TextField("50.0", value: $z0Reference, format: .number)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.caption)
+                        .frame(width: 60)
+                }
+            }
+            .padding(12)
+            .background(Color(nsColor: .controlBackgroundColor))
 
             Text("\(impedances.count) inputs")
                 .font(.caption)
@@ -384,7 +407,6 @@ struct SmithChartView: View {
                 zi: [-5, -10, -15, -20]
             )
         ],
-        swrValue: 2.0,
         frequency: 146.5
     )
 }

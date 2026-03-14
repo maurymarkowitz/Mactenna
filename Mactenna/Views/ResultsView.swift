@@ -298,11 +298,11 @@ struct ResultsView: View {
                 // Group all impedances as a single feedpoint (they're all from the same NEC run)
                 let allZr = result.impedances.map { $0.zr }
                 let allZi = result.impedances.map { $0.zi }
-                
+
                 let impedanceArrays: [(zr: [Float], zi: [Float])] = [
                     (zr: allZr, zi: allZi)
                 ]
-                
+
                 SmithChartView(impedances: impedanceArrays)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
