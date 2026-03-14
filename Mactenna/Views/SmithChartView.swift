@@ -7,6 +7,7 @@ import SwiftUI
 
 struct SmithChartView: View {
     let impedances: [(zr: [Float], zi: [Float])]
+    var swrValue: Float = 2.0  // SWR for the circle overlay
 
     private let chartRadius: CGFloat = 225
     private let margin: CGFloat = 60
@@ -133,6 +134,20 @@ struct SmithChartView: View {
         context.draw(resolvedImage, at: CGPoint(x: labelX, y: labelY))
     }
 
+    // MARK: - SWR Circle
+
+    private func drawSWRCircle(_ context: inout GraphicsContext, center: CGPoint) {
+        let r = (swrValue - 1) / (swrValue + 1)
+        let radius = CGFloat(r) * chartRadius
+        
+        var swrPath = Path()
+        swrPath.addEllipse(in: CGRect(
+            x: center.x - radius, y: center.y - radius,
+            width: radius * 2,     height: radius * 2
+        ))
+        context.stroke(swrPath, with: .color(.red.opacity(0.5)), lineWidth: 1.0)
+    }
+
     private func drawSmithChartBackground(_ context: inout GraphicsContext, center: CGPoint) {
         // Create circular clipping path
         var clipPath = Path()
@@ -212,6 +227,9 @@ struct SmithChartView: View {
 
                 // Draw Smith chart background with grid
                 drawSmithChartBackground(&context, center: center)
+                
+                // Draw SWR circle on top (after background)
+                drawSWRCircle(&context, center: center)
             }
             .frame(height: chartRadius * 2 + margin * 2)
             .background(Color(nsColor: .controlBackgroundColor))
@@ -227,6 +245,7 @@ struct SmithChartView: View {
     SmithChartView(
         impedances: [
             (zr: [50], zi: [0])
-        ]
+        ],
+        swrValue: 2.0
     )
 }
