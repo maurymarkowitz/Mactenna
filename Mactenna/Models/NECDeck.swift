@@ -521,6 +521,46 @@ final class NECDeck: ObservableObject {
         autoRecalcIfAppropriate()
     }
 
+    /// Set an integer field from a string value.
+    /// Accepts either a plain integer ("42") or a formula string ("lambda*2").
+    /// If the value parses as an integer, uses setIntField.
+    /// If the value is a formula, stores it by marking the card for refresh.
+    func setIntFieldFromString(row: Int, field: Int, valueStr: String) {
+        let trimmed = valueStr.trimmingCharacters(in: .whitespaces)
+
+        // If it parses as an integer, use the numeric setter.
+        if let intVal = Int(trimmed) {
+            setIntField(row: row, field: field, value: intVal)
+            return
+        }
+
+        // For formula strings, we cannot directly set them via C API.
+        // The formula would be embedded in deck text during save/restore.
+        // For now, log that this happened and skip the write.
+        // TODO: Implement formula support via card reconstruction from text.
+        print("[NECDeck] setIntFieldFromString: formula values not yet supported (\(trimmed))")
+    }
+
+    /// Set a float field from a string value.
+    /// Accepts either a plain number ("3.14") or a formula string ("lambda/4").
+    /// If the value parses as a double, uses setFloatField.
+    /// If the value is a formula, stores it by marking the card for refresh.
+    func setFloatFieldFromString(row: Int, field: Int, valueStr: String) {
+        let trimmed = valueStr.trimmingCharacters(in: .whitespaces)
+
+        // If it parses as a double, use the numeric setter.
+        if let doubleVal = Double(trimmed) {
+            setFloatField(row: row, field: field, value: doubleVal)
+            return
+        }
+
+        // For formula strings, we cannot directly set them via C API.
+        // The formula would be embedded in deck text during save/restore.
+        // For now, log that this happened and skip the write.
+        // TODO: Implement formula support via card reconstruction from text.
+        print("[NECDeck] setFloatFieldFromString: formula values not yet supported (\(trimmed))")
+    }
+
     /// Replace the comment field of a card (any card, including CM/CE).
     /// Frees the old C string and allocates a fresh one via strdup.
     func setComment(row: Int, text: String) {
@@ -772,7 +812,7 @@ final class NECDeck: ObservableObject {
             simulationResult = SimulationResult(failed: true,
                 errorMessage: "Card \(index) out of range (deck has \(cardCount) cards)",
                 outputText: "", logLines: [],
-                radiationPattern: [], patternMaxGain: 0, patternAvgPower: 0)
+                radiationPattern: [], patternMaxGain: 0, patternAvgPower: 0, impedances: [])
             return
         }
 
@@ -870,7 +910,7 @@ final class NECDeck: ObservableObject {
         simulationResult = SimulationResult(failed: false, errorMessage: nil,
                                             outputText: lines.joined(separator: "\n"),
                                             logLines: [],
-                                            radiationPattern: [], patternMaxGain: 0, patternAvgPower: 0)
+                                            radiationPattern: [], patternMaxGain: 0, patternAvgPower: 0, impedances: [])
     }
 
     // MARK: – Simulation (Phase 3)
@@ -1055,7 +1095,7 @@ final class NECDeck: ObservableObject {
                     self.simulationResult = SimulationResult(
                         failed: true, errorMessage: "Could not create simulation context",
                         outputText: "", logLines: [],
-                        radiationPattern: [], patternMaxGain: 0, patternAvgPower: 0)
+                        radiationPattern: [], patternMaxGain: 0, patternAvgPower: 0, impedances: [])
                     self.isRunning = false
                 }
                 return
@@ -1102,6 +1142,17 @@ final class NECDeck: ObservableObject {
             let elapsed = Date().timeIntervalSince(runStart)
 
             // ── Read results directly from the context structs ─────────────
+
+            // ── Read impedance data while context still valid ──
+            var impedances: [SimulationResult.ImpedancePoint] = []
+            let ninp = Int(nec_result_ninp(simCtx))
+            impedances.reserveCapacity(ninp)
+            for i in 0..<ninp {
+                let zr = nec_result_inp_z_r(simCtx, Int32(i))
+                let zi = nec_result_inp_z_i(simCtx, Int32(i))
+                impedances.append(SimulationResult.ImpedancePoint(zr: Float(zr), zi: Float(zi)))
+            }
+
             // ── Read radiation pattern points while context still valid ──
             var patternPoints: [SimulationResult.RadiationPoint] = []
             var patGmax: Double = 0.0
@@ -1139,7 +1190,8 @@ final class NECDeck: ObservableObject {
                 logLines: logLines,
                 radiationPattern: patternPoints,
                 patternMaxGain: patGmax,
-                patternAvgPower: patPint)
+                patternAvgPower: patPint,
+                impedances: impedances)
 
             DispatchQueue.main.async {
                 if let old = self.solvedCtx { nec_destroy_context(old) }

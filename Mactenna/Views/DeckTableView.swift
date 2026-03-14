@@ -84,8 +84,12 @@ struct DeckTableView: NSViewRepresentable {
     /// The parent view is responsible for registering undo using the snapshot.
     var onMove: (Int, Int, String) -> Void = { _, _, _ in }
 
+    /// Called when user double-clicks the row number to edit via dialog.
+    /// Passes the row index; parent should show the editor dialog.
+    var onEditCard: (Int) -> Void = { _ in }
+
     func makeCoordinator() -> Coordinator {
-        Coordinator(deck: deck, selectedIndex: $selectedIndex, onCommitEdit: onCommitEdit, onMove: onMove)
+        Coordinator(deck: deck, selectedIndex: $selectedIndex, onCommitEdit: onCommitEdit, onMove: onMove, onEditCard: onEditCard)
     }
 
     func makeNSView(context: Context) -> NSScrollView {
@@ -255,6 +259,7 @@ struct DeckTableView: NSViewRepresentable {
         var selectedIndex: Binding<Int?>
         var onCommitEdit: (Int, String, String) -> Void
         var onMove: (Int, Int, String) -> Void
+        var onEditCard: (Int) -> Void
         weak var tableView: NSTableView?
         // labels overlayed in the scrollview
         var sectionLabels: [NSTextField] = []
@@ -265,12 +270,14 @@ struct DeckTableView: NSViewRepresentable {
         init(deck: NECDeck,
              selectedIndex: Binding<Int?>,
              onCommitEdit: @escaping (Int, String, String) -> Void,
-             onMove: @escaping (Int, Int, String) -> Void) {
+             onMove: @escaping (Int, Int, String) -> Void,
+             onEditCard: @escaping (Int) -> Void) {
             // initialize all stored properties before calling super
             self.deck          = deck
             self.selectedIndex = selectedIndex
             self.onCommitEdit  = onCommitEdit
             self.onMove        = onMove
+            self.onEditCard    = onEditCard
 
             super.init()
 
@@ -767,7 +774,14 @@ struct DeckTableView: NSViewRepresentable {
             guard col >= 0, row >= 0,
                   let colID = tv.tableColumns[col].identifier.rawValue as String?,
                   let deckRow = deck.card(at: row) else { return }
-            // only allow editing if our delegate would allow it
+
+            // Double-click on row number opens the editor dialog
+            if colID == "rownum" {
+                onEditCard(row)
+                return
+            }
+
+            // only allow editing other columns if our delegate would allow it
             if colID != "card" && !deckRow.isIgnored {
                 tv.editColumn(col, row: row, with: nil, select: true)
             }

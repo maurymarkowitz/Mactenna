@@ -657,6 +657,9 @@ class Coordinator: NSObject, GeometryViewDragDelegate, SCNSceneRendererDelegate 
     /// Camera node preserved between scene rebuilds so we retain orientation/zoom.
     var cameraNode: SCNNode? = nil
 
+    /// Temporary preview geometry shown while dragging a handle.
+    private var previewNode: SCNNode? = nil
+
     // current drag/interaction state (Phase B)
     var dragState: GeometryView.DragState = .idle
 
@@ -1053,6 +1056,33 @@ class Coordinator: NSObject, GeometryViewDragDelegate, SCNSceneRendererDelegate 
             // orient plane perpendicular to axis vector
             pn.look(at: pn.position + axis.vector)
             g = pn
+        case .rotation(let center, let axis):
+            // draw a circular ring around the rotation axis at the handle distance
+            let radius = (node.worldPosition - center).length()
+            guard radius > 0 else { break }
+            let torus = SCNTorus(ringRadius: CGFloat(radius), pipeRadius: CGFloat(radius * 0.005))
+            torus.firstMaterial?.diffuse.contents = NSColor.systemYellow
+            let tn = SCNNode(geometry: torus)
+            // rotate so the torus' local z-axis aligns with `axis`
+            let zAxis = SIMD3<Float>(0,0,1)
+            // our `axis` value is an SCNVector3; convert to SIMD before using
+            // simd utilities.
+            let ax3 = axis.normalized()
+            let ax = SIMD3<Float>(x: Float(ax3.x), y: Float(ax3.y), z: Float(ax3.z))
+            let dotp = simd_dot(zAxis, ax)
+            let quat: simd_quatf
+            if abs(dotp - 1.0) < 0.001 {
+                quat = simd_quatf()
+            } else if abs(dotp + 1.0) < 0.001 {
+                quat = simd_quatf(angle: Float.pi, axis: SIMD3<Float>(1,0,0))
+            } else {
+                let rotAxis = normalize(cross(zAxis, ax))
+                let rotAngle = acos(dotp)
+                quat = simd_quatf(angle: rotAngle, axis: rotAxis)
+            }
+            tn.simdOrientation = quat
+            tn.position = center
+            g = tn
         default:
             break
         }
@@ -1067,6 +1097,26 @@ class Coordinator: NSObject, GeometryViewDragDelegate, SCNSceneRendererDelegate 
     private func clearGuide() {
         guideNode?.removeFromParentNode()
         guideNode = nil
+    }
+
+    /// Show or update a simple line connecting the two endpoints of the card
+    /// currently being dragged.  This provides a live preview of the wire
+    /// without rebuilding the entire scene.
+    private func showPreviewLine(start: SCNVector3,
+                                 end: SCNVector3,
+                                 in scene: SCNScene) {
+        // remove any previous preview first
+        previewNode?.removeFromParentNode()
+        let line = parent.lineNode(from: start, to: end, color: .systemYellow)
+        line.name = "dragPreview"
+        scene.rootNode.addChildNode(line)
+        previewNode = line
+    }
+
+    /// Remove the preview line if present.
+    private func clearPreviewLine() {
+        previewNode?.removeFromParentNode()
+        previewNode = nil
     }
 
     // MARK: – Live dimension overlay (Phase E)
@@ -1306,6 +1356,25 @@ class Coordinator: NSObject, GeometryViewDragDelegate, SCNSceneRendererDelegate 
                                current: finalPosition,
                                constraint: constraint,
                                in: view)
+
+        // update live wire preview so the user sees geometry move in real time
+        if let (_, newStart, newEnd) = deckCoords(afterDrag: hid,
+                                                    startWorld: start,
+                                                    worldPos: finalPosition),
+           let cont = node.parent,
+           let scene = view.scene {
+            // convert any updated local coordinates back to world space
+            func worldPos(from local: SIMD3<Float>?) -> SCNVector3? {
+                guard let l = local else { return nil }
+                let vec = SCNVector3(CGFloat(l.x), CGFloat(l.y), CGFloat(l.z))
+                return cont.convertPosition(vec, to: nil)
+            }
+            let ws = worldPos(from: newStart)
+            let we = worldPos(from: newEnd)
+            if let wstart = ws, let wend = we {
+                showPreviewLine(start: wstart, end: wend, in: scene)
+            }
+        }
     }
     func mouseUp(at point: NSPoint, in view: SCNView) {
         // hide overlay when drag finishes
@@ -1336,6 +1405,8 @@ class Coordinator: NSObject, GeometryViewDragDelegate, SCNSceneRendererDelegate 
             clearGuide()
             clearSnapIndicator()
             clearDimensionOverlay()
+            // also clear any live preview
+            clearPreviewLine()
         }
     }
 

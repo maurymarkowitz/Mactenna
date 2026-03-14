@@ -138,6 +138,8 @@ struct ResultsView: View {
             patternTab(result)
         case .geometry:
             geometryTab()
+        case .smith:
+            smithChartTab(result)
         }
     }
 
@@ -276,13 +278,38 @@ struct ResultsView: View {
         }
         undoManager?.setActionName("Move card \(card)")
     }
-}
+    /// View displayed when the Smith Chart tab is selected.
+    private func smithChartTab(_ result: SimulationResult) -> some View {
+        return ZStack {
+            if result.impedances.isEmpty {
+                VStack(spacing: 8) {
+                    Image(systemName: "waveform.circle")
+                        .font(.system(size: 32))
+                        .foregroundStyle(.secondary)
+                    Text("No impedance data")
+                        .foregroundStyle(.secondary)
+                    Text("Run a simulation to compute antenna input impedances.")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                // Convert impedances to format expected by SmithChartView
+                let impedanceArrays = result.impedances.map {
+                    (zr: [$0.zr], zi: [$0.zi])
+                }
+                SmithChartView(impedances: impedanceArrays)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+    }}
 
 // MARK: – ResultTab
 
 private enum ResultTab: String, CaseIterable, Identifiable {
     case geometry = "Geometry"
     case pattern  = "Pattern"
+    case smith    = "Smith Chart"
 
     var id: String { rawValue }
     var label: String { rawValue }

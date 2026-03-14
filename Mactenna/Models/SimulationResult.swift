@@ -50,6 +50,18 @@ struct SimulationResult {
     /// Average power from the context (pint) or 0 if none.
     let patternAvgPower: Double
 
+    // MARK: – Impedance data
+
+    /// Single impedance point per input: (zr, zi) = (R, X) in Ω.
+    struct ImpedancePoint {
+        let zr: Float  // resistance
+        let zi: Float  // reactance
+    }
+
+    /// Impedance data for each input (source).
+    /// Array index corresponds to input number; each element contains zr and zi.
+    let impedances: [ImpedancePoint]
+
     // MARK: – Summary convenience
 
     /// True if outputText is non-empty (simulation produced printable results).

@@ -29,6 +29,12 @@ struct ContentView: View {
 
     @State private var selectedIndex: Int? = nil
 
+    /// Editor dialog state: if non-nil, a dialog is displayed for this card.
+    /// Tuple: (cardType, rowIndex, deckRow)
+    /// rowIndex = -1 means adding a new card (not yet inserted into deck).
+    @State private var editingCard: (NECCardType, Int, DeckRow?)? = nil
+    @State private var showEditor = false
+
     @Environment(\.undoManager) private var undoManager
 
     init(document: Binding<MactennaDocument>) {
@@ -47,6 +53,9 @@ struct ContentView: View {
                                   d.restore(text: snapshot)
                               }
                               undoManager?.setActionName("Move Card")
+                          },
+                          onEditCard: { row in
+                              openCardEditor(at: row)
                           })
                 .frame(minWidth: 600)
 
@@ -101,10 +110,24 @@ struct ContentView: View {
             }
             #endif
         }
+        // Card editor dialog sheet
+        .sheet(isPresented: $showEditor) {
+            if let (cardType, rowIndex, deckRow) = editingCard {
+                makeCardEditor(
+                    cardType: cardType,
+                    rowIndex: rowIndex,
+                    deckRow: deckRow,
+                    onCommit: handleEditorCommit,
+                    onCancel: { },
+                    onDismiss: { showEditor = false; editingCard = nil }
+                )
+            }
+        }
         // Expose card actions to MactennaApp's CommandMenu("Card").
         .focusedValue(\.addCard,      addCardRow)
         .focusedValue(\.deleteCard,   deleteCardRow)
         .focusedValue(\.canDeleteCard, selectedIndex != nil)
+        .focusedValue(\.addCardOfType, addCardOfSpecificType)
         // Sync serialised deck text back to MactennaDocument on any change.
         // In DEBUG builds autosave is suppressed — use the "Sync & Save"
         // toolbar button to write the current deck state to disk explicitly.
@@ -184,6 +207,95 @@ struct ContentView: View {
         }
         undoManager?.setActionName("Add Card")
         selectedIndex = afterIndex + 1
+    }
+
+    // MARK: – Editor dialog handlers
+
+    /// Called when the user commits an editor dialog.
+    /// For editing (rowIndex >= 0), applies the field values.
+    /// For adding (rowIndex == -1), inserts a new card and applies values.
+    private func handleEditorCommit(rowIndex: Int, fieldValues: [String]) {
+        let snapshot = deck.text()
+
+        if rowIndex >= 0 {
+            // Editing existing card: apply each field value
+            let deckRow = deck.card(at: rowIndex)
+            let _ = deckRow.map { NECCardType($0.cardCode) } ?? .unknown
+
+            // Apply I fields (use string-aware setter to handle formulas)
+            for i in 0..<4 {
+                if i < fieldValues.count && !fieldValues[i].isEmpty {
+                    deck.setIntFieldFromString(row: rowIndex, field: i + 1, valueStr: fieldValues[i])
+                }
+            }
+
+            // Apply F fields (use string-aware setter to handle formulas)
+            for i in 0..<7 {
+                let idx = 4 + i
+                if idx < fieldValues.count && !fieldValues[idx].isEmpty {
+                    deck.setFloatFieldFromString(row: rowIndex, field: i + 1, valueStr: fieldValues[idx])
+                }
+            }
+
+            // Handle comment field (either 12th element for standard cards or 1st for comment-only)
+            if let commentVal = fieldValues.last {
+                deck.setComment(row: rowIndex, text: commentVal)
+            }
+
+            undoManager?.registerUndo(withTarget: deck) { d in
+                d.restore(text: snapshot)
+            }
+            undoManager?.setActionName("Edit Card")
+        } else {
+            // Adding new card: insert it and apply values
+            // Determine the card type from the editor's cardType
+            guard let (cardType, _, _) = editingCard else { return }
+
+            // Insert after the selected row, or before the last card (EN) if nothing selected
+            let afterIndex = selectedIndex ?? max(deck.cardCount - 2, 0)
+            deck.addCard(cardType.rawValue, after: afterIndex)
+            let newIndex = afterIndex + 1
+
+            // Now apply the field values to the newly inserted card
+            for i in 0..<4 {
+                if i < fieldValues.count && !fieldValues[i].isEmpty {
+                    deck.setIntFieldFromString(row: newIndex, field: i + 1, valueStr: fieldValues[i])
+                }
+            }
+
+            for i in 0..<7 {
+                let idx = 4 + i
+                if idx < fieldValues.count && !fieldValues[idx].isEmpty {
+                    deck.setFloatFieldFromString(row: newIndex, field: i + 1, valueStr: fieldValues[idx])
+                }
+            }
+
+            if let commentVal = fieldValues.last {
+                deck.setComment(row: newIndex, text: commentVal)
+            }
+
+            undoManager?.registerUndo(withTarget: deck) { d in
+                d.restore(text: snapshot)
+            }
+            undoManager?.setActionName("Add Card")
+            selectedIndex = newIndex
+        }
+    }
+
+    /// Opens the editor dialog for the card at the given row index.
+    private func openCardEditor(at rowIndex: Int) {
+        guard let deckRow = deck.card(at: rowIndex) else { return }
+        let cardType = NECCardType(deckRow.cardCode)
+        editingCard = (cardType, rowIndex, deckRow)
+        showEditor = true
+    }
+
+    /// Opens the editor dialog in "add mode" for the given card type.
+    /// The editor will allow the user to fill in fields and then insert a new card.
+    private func addCardOfSpecificType(_ cardType: NECCardType) {
+        // Start with default/empty values
+        editingCard = (cardType, -1, nil)
+        showEditor = true
     }
 
     private func deleteCardRow() {

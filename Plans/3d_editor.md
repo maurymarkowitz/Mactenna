@@ -204,7 +204,7 @@ GW is the simplest and most common — implement it first and use it as the temp
 3. Modifier keys are monitored via keyDown/keyUp and `NSEvent.modifierFlags`; Option gives free, Command enters rotation, Shift enables precision and plane locking ✅
 4. Added worldMidpointFor helper; fixed ambiguous operator issue when computing midpoints ✅
 4. Letter keys X/Y/Z lock to world axes (hold Shift for plane) via key event tracking ✅
-5. **Guide visualization** partially done: axial/world-axis/plane guides now appear as lines/planes; rotation ring remains to implement ✏️
+5. **Guide visualization** complete: axial/world-axis/plane guides drawn as lines/planes and rotation ring implemented as a torus in rotation mode ✅
 6. **Files**: GeometryView.swift (Coordinator expanded)
 
 ### Phase D: Snap / Inference System (*depends on B, parallel with C*)
@@ -218,6 +218,8 @@ GW is the simplest and most common — implement it first and use it as the temp
 ### Phase E: Live Dimensioning (*depends on B, parallel with C and D*)
 1. Added live drag overlay in `GeometryView.Coordinator` using billboarded `SCNText` ✅
 2. Overlay now updates continuously during drag events (`mouseDragged`) ✅
+3. Wire geometry previews during drag so segments move in real time (added live preview line)
+4. Guide ring updates during rotation drags in real time ✅
    • switched to screen-space SpriteKit overlay via `overlaySKScene` for
      guaranteed visibility; coordinates obtained via `projectPoint`.  scene
      children are now fully cleared on update to avoid artifacts.

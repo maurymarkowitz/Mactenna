@@ -18,4 +18,8 @@ extension FocusedValues {
     /// Whether a card is currently selected (determines Delete Card enabled state).
     /// Must be Optional — the @Entry macro requires Optional values on FocusedValues.
     @Entry var canDeleteCard: Bool? = nil
+
+    /// Closure to add a card of a specific type: (NECCardType) -> Void
+    /// Used by the Add menu to insert cards of chosen types.
+    @Entry var addCardOfType: ((NECCardType) -> Void)? = nil
 }
