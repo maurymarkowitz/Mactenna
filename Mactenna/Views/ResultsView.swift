@@ -303,7 +303,7 @@ struct ResultsView: View {
                     (zr: allZr, zi: allZi)
                 ]
 
-                SmithChartView(impedances: impedanceArrays)
+                SmithChartView(impedances: impedanceArrays, frequency: result.frequency)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }

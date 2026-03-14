@@ -812,7 +812,7 @@ final class NECDeck: ObservableObject {
             simulationResult = SimulationResult(failed: true,
                 errorMessage: "Card \(index) out of range (deck has \(cardCount) cards)",
                 outputText: "", logLines: [],
-                radiationPattern: [], patternMaxGain: 0, patternAvgPower: 0, impedances: [])
+                radiationPattern: [], patternMaxGain: 0, patternAvgPower: 0, frequency: 0, impedances: [])
             return
         }
 
@@ -910,7 +910,7 @@ final class NECDeck: ObservableObject {
         simulationResult = SimulationResult(failed: false, errorMessage: nil,
                                             outputText: lines.joined(separator: "\n"),
                                             logLines: [],
-                                            radiationPattern: [], patternMaxGain: 0, patternAvgPower: 0, impedances: [])
+                                            radiationPattern: [], patternMaxGain: 0, patternAvgPower: 0, frequency: 0, impedances: [])
     }
 
     // MARK: – Simulation (Phase 3)
@@ -1095,7 +1095,7 @@ final class NECDeck: ObservableObject {
                     self.simulationResult = SimulationResult(
                         failed: true, errorMessage: "Could not create simulation context",
                         outputText: "", logLines: [],
-                        radiationPattern: [], patternMaxGain: 0, patternAvgPower: 0, impedances: [])
+                        radiationPattern: [], patternMaxGain: 0, patternAvgPower: 0, frequency: 0, impedances: [])
                     self.isRunning = false
                 }
                 return
@@ -1191,6 +1191,7 @@ final class NECDeck: ObservableObject {
                 radiationPattern: patternPoints,
                 patternMaxGain: patGmax,
                 patternAvgPower: patPint,
+                frequency: Float(nec_result_freq_mhz(simCtx)),
                 impedances: impedances)
 
             DispatchQueue.main.async {

@@ -50,6 +50,11 @@ struct SimulationResult {
     /// Average power from the context (pint) or 0 if none.
     let patternAvgPower: Double
 
+    // MARK: – Frequency data
+
+    /// Simulation frequency in MHz.
+    let frequency: Float
+
     // MARK: – Impedance data
 
     /// Single impedance point per input: (zr, zi) = (R, X) in Ω.
