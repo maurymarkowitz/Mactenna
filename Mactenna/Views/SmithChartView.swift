@@ -158,16 +158,16 @@ struct SmithChartView: View {
     private func drawImpedanceData(_ context: inout GraphicsContext, center: CGPoint) {
         for (feedpointIndex, impedanceData) in impedances.enumerated() {
             var pathPoints: [CGPoint] = []
-            
+
             // Convert impedance points to Smith chart coordinates
             for i in 0..<impedanceData.zr.count {
                 let zr = impedanceData.zr[i]
                 let zi = impedanceData.zi[i]
-                
+
                 // Normalize by reference Z0
                 let r = zr / z0Reference
                 let x = zi / z0Reference
-                
+
                 let (u, v) = rxToUVf(r: r, x: x)
                 let xCoord = center.x + CGFloat(u) * chartRadius
                 let yCoord = center.y - CGFloat(v) * chartRadius
@@ -208,7 +208,7 @@ struct SmithChartView: View {
         // Normalize impedance by reference Z0
         let r = zr / z0Reference
         let x = zi / z0Reference
-        
+
         // Calculate reflection coefficient magnitude
         let num_real = r * r + x * x - 1
         let num_imag = 2 * x
@@ -367,18 +367,18 @@ struct SmithChartView: View {
                     Text("SWR Circle Radius:")
                         .font(.caption)
                         .frame(width: 130, alignment: .leading)
-                    
+
                     TextField("2.0", value: $swrValue, format: .number)
                         .textFieldStyle(.roundedBorder)
                         .font(.caption)
                         .frame(width: 60)
                 }
-                
+
                 HStack(spacing: 12) {
                     Text("Reference Z₀ (Ω):")
                         .font(.caption)
                         .frame(width: 130, alignment: .leading)
-                    
+
                     TextField("50.0", value: $z0Reference, format: .number)
                         .textFieldStyle(.roundedBorder)
                         .font(.caption)
