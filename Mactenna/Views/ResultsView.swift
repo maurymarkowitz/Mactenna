@@ -140,6 +140,10 @@ struct ResultsView: View {
             geometryTab()
         case .smith:
             smithChartTab(result)
+        case .elevation:
+            elevationPatternTab(result)
+        case .azimuth:
+            azimuthPatternTab(result)
         }
     }
 
@@ -307,14 +311,99 @@ struct ResultsView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-    }}
+    }
+
+    /// View displayed when the Elevation Pattern tab is selected.
+    private func elevationPatternTab(_ result: SimulationResult) -> some View {
+        let pts: [SimulationResult.RadiationPoint]
+        if !fullPatternPoints.isEmpty {
+            pts = fullPatternPoints
+        } else {
+            pts = result.radiationPattern
+        }
+
+        return ZStack {
+            if pts.isEmpty {
+                VStack(spacing: 8) {
+                    Image(systemName: "xmark.octagon")
+                        .font(.system(size: 32))
+                        .foregroundStyle(.secondary)
+                    Text("No radiation pattern data")
+                        .foregroundStyle(.secondary)
+                    Text("Use Run to simulate or request full-sphere computation.")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                PatternBaseView(
+                    radiationPoints: pts,
+                    frequency: result.frequency,
+                    isElevation: true
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+
+            if isComputingPattern {
+                ProgressView("Computing pattern…")
+                    .progressViewStyle(CircularProgressViewStyle())
+                    .padding(8)
+                    .background(Color(.windowBackgroundColor).opacity(0.8))
+                    .cornerRadius(8)
+            }
+        }
+    }
+
+    /// View displayed when the Azimuth Pattern tab is selected.
+    private func azimuthPatternTab(_ result: SimulationResult) -> some View {
+        let pts: [SimulationResult.RadiationPoint]
+        if !fullPatternPoints.isEmpty {
+            pts = fullPatternPoints
+        } else {
+            pts = result.radiationPattern
+        }
+
+        return ZStack {
+            if pts.isEmpty {
+                VStack(spacing: 8) {
+                    Image(systemName: "xmark.octagon")
+                        .font(.system(size: 32))
+                        .foregroundStyle(.secondary)
+                    Text("No radiation pattern data")
+                        .foregroundStyle(.secondary)
+                    Text("Use Run to simulate or request full-sphere computation.")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                PatternBaseView(
+                    radiationPoints: pts,
+                    frequency: result.frequency,
+                    isElevation: false
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+
+            if isComputingPattern {
+                ProgressView("Computing pattern…")
+                    .progressViewStyle(CircularProgressViewStyle())
+                    .padding(8)
+                    .background(Color(.windowBackgroundColor).opacity(0.8))
+                    .cornerRadius(8)
+            }
+        }
+    }
+}
 
 // MARK: – ResultTab
 
 private enum ResultTab: String, CaseIterable, Identifiable {
-    case geometry = "Geometry"
-    case pattern  = "Pattern"
-    case smith    = "Smith Chart"
+    case geometry  = "Geometry"
+    case pattern   = "Pattern"
+    case smith     = "Smith Chart"
+    case elevation = "Elevation"
+    case azimuth   = "Azimuth"
 
     var id: String { rawValue }
     var label: String { rawValue }
