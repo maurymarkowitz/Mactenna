@@ -17,7 +17,7 @@ struct SmithChartView: View {
     private let zMajorDiv: [Int]   = [5, 5, 2, 2, 5, 5, 5, 5]
 
     // MARK: - Helper functions for Smith chart grid
-    
+
     private func rxToUVf(r: Float, x: Float) -> (u: Float, v: Float) {
         let r2 = r * r, x2 = x * x
         let d  = r2 + x2 + 2 * r + 1
@@ -99,13 +99,13 @@ struct SmithChartView: View {
     }
 
     // MARK: - Label drawing
-    
+
     private func drawResistanceLabel(_ context: inout GraphicsContext, center: CGPoint,
                                      r: Float, label: String) {
         let (u, _) = rxToUVf(r: r, x: 0)
         let x = center.x + CGFloat(u) * chartRadius
         let y = center.y
-        
+
         // Position label horizontally on the real axis
         var resolvedImage = context.resolve(
             Text(label)
@@ -121,10 +121,10 @@ struct SmithChartView: View {
         let isNegative = x < 0
         let rad = isNegative ? 0.985 : 0.93
         let radiusScale = CGFloat(rad) * chartRadius
-        
+
         let labelX = center.x + CGFloat(u) * radiusScale
         let labelY = center.y - CGFloat(v) * radiusScale
-        
+
         var resolvedImage = context.resolve(
             Text(label)
                 .font(.system(size: 8, weight: .regular, design: .default))
