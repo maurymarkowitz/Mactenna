@@ -1080,7 +1080,7 @@ class Coordinator: NSObject, GeometryViewDragDelegate, SCNSceneRendererDelegate 
         String(format: "%.3f m", value)
     }
 
-    private func cardIndex(from handle: HandleID) -> Int {
+    fileprivate func cardIndex(from handle: HandleID) -> Int {
         switch handle {
         case .start(let card), .mid(let card), .end(let card):
             return card
@@ -1284,6 +1284,19 @@ class Coordinator: NSObject, GeometryViewDragDelegate, SCNSceneRendererDelegate 
             finalPosition = snap
         } else {
             finalPosition = constrained
+        }
+        // if dragging the midpoint, move the other two handles by same delta
+        if case .mid = hid {
+            let delta = finalPosition - start
+            // look up start/end handle nodes by name
+            if let cont = node.parent {
+                if let h1 = cont.childNode(withName: "handle_start_card_\(cardIndex(from: hid))", recursively: false) {
+                    h1.worldPosition = h1.worldPosition + delta
+                }
+                if let h3 = cont.childNode(withName: "handle_end_card_\(cardIndex(from: hid))", recursively: false) {
+                    h3.worldPosition = h3.worldPosition + delta
+                }
+            }
         }
         node.worldPosition = finalPosition
         // TODO: use precisionLock to scale movement (later)
