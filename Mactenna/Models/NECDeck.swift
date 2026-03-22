@@ -64,7 +64,7 @@ final class NECDeck: ObservableObject {
 
     // MARK: – Default template for new documents
 
-    static let defaultTemplate = """
+    nonisolated static let defaultTemplate = """
     CM New antenna deck
     CE
     GW 1 11 0 0 0 0 0 0.25 0.001

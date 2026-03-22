@@ -561,18 +561,17 @@ struct GeometryView: NSViewRepresentable {
             segmentFaceCount.append(mesh.indices.count / 3)
 
             let isSelectedSeg = (seg.cardIndex == selectedCard)
-            // no debug coloring output
-            let color = isSelectedSeg ? NSColor.systemYellow : NSColor.darkGray
+            // Bright metallic grey for unselected, yellow for selected
+            let color = isSelectedSeg ? NSColor.systemYellow : NSColor(red: 0.75, green: 0.75, blue: 0.75, alpha: 1.0)
             for _ in 0..<mesh.vertices.count {
                 batchColors.append(color)
             }
-            // selected segment color check (no logging)
         }
 
         if !batchVertices.isEmpty {
             let posSource = SCNGeometrySource(vertices: batchVertices)
             let normalSource = SCNGeometrySource(normals: batchNormals)
-            var colorData: [UInt8] = []
+            var colorData: [Float] = []
             for color in batchColors {
                 var r: CGFloat=0,g:CGFloat=0,b:CGFloat=0,a:CGFloat=1
                 if let rgb = color.usingColorSpace(.sRGB) {
@@ -580,18 +579,18 @@ struct GeometryView: NSViewRepresentable {
                 } else {
                     color.getRed(&r, green:&g, blue:&b, alpha:&a)
                 }
-                colorData.append(UInt8(r*255)); colorData.append(UInt8(g*255));
-                colorData.append(UInt8(b*255)); colorData.append(UInt8(a*255))
+                colorData.append(Float(r)); colorData.append(Float(g));
+                colorData.append(Float(b)); colorData.append(Float(a))
             }
-            // debug bytes removed
-            let colorSource = SCNGeometrySource(data: Data(colorData),
+            let colorDataBytes = Data(buffer: UnsafeBufferPointer(start: colorData, count: colorData.count))
+            let colorSource = SCNGeometrySource(data: colorDataBytes,
                                                 semantic: .color,
                                                 vectorCount: batchVertices.count,
-                                                usesFloatComponents: false,
+                                                usesFloatComponents: true,
                                                 componentsPerVector: 4,
-                                                bytesPerComponent: 1,
+                                                bytesPerComponent: MemoryLayout<Float>.size,
                                                 dataOffset: 0,
-                                                dataStride: 4)
+                                                dataStride: MemoryLayout<Float>.size*4)
             let indexData = Data(batchIndices.flatMap { index in
                 withUnsafeBytes(of: index) { Array($0) }
             })
@@ -601,7 +600,7 @@ struct GeometryView: NSViewRepresentable {
                                              bytesPerIndex: MemoryLayout<UInt32>.size)
             let batchedGeometry = SCNGeometry(sources: [posSource, normalSource, colorSource],
                                              elements: [element])
-            // no custom material: allow per-vertex colors to drive appearance
+            // Use constant lighting to display per-vertex colors directly without additional darkening
             batchedGeometry.firstMaterial?.lightingModel = .constant
             batchedGeometry.firstMaterial?.isDoubleSided = true
             let batchNode = SCNNode(geometry: batchedGeometry)

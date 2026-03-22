@@ -179,7 +179,7 @@ struct PatternBaseView: View {
             let x = center.x + labelRadius * CGFloat(cos(Double(angle)))
             let y = center.y - labelRadius * CGFloat(sin(Double(angle)))
 
-            var resolvedImage = context.resolve(
+            let resolvedImage = context.resolve(
                 Text(label)
                     .font(.system(size: 9, weight: .regular, design: .default))
                     .foregroundColor(.black)
@@ -196,7 +196,7 @@ struct PatternBaseView: View {
             let y = center.y
 
             let label = String(dB)
-            var resolvedImage = context.resolve(
+            let resolvedImage = context.resolve(
                 Text(label)
                     .font(.system(size: 8, weight: .regular, design: .monospaced))
                     .foregroundColor(.gray)
@@ -243,7 +243,7 @@ struct PatternBaseView: View {
         }
 
         // Draw data points
-        for (index, point) in pathPoints.enumerated() {
+        for (_, point) in pathPoints.enumerated() {
             let radius: CGFloat = 3
             context.fill(
                 Path(ellipseIn: CGRect(
